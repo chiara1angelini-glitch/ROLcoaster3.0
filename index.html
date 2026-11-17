@@ -112,6 +112,16 @@ details summary{cursor:pointer;color:var(--pri);font-size:14px;margin-top:8px;fo
 .modal{position:fixed;inset:0;background:rgba(30,10,20,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center;padding:12px}
 .modal .box{background:var(--card);border-radius:20px;padding:18px;width:100%;max-width:480px;margin-bottom:env(safe-area-inset-bottom)}
 .modal p{margin:0 0 8px;white-space:pre-line}
+#sheetBox{max-height:85vh;overflow:auto}
+textarea{min-height:200px;font-size:14px;line-height:1.4}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal .h{font-size:11px;color:var(--muted);font-weight:700;padding:2px 0}
+.cal .c{border-radius:10px;padding:6px 0 4px;font-size:13px;font-weight:600;background:var(--bg);min-height:38px;position:relative;cursor:pointer}
+.cal .c.we{opacity:.55}.cal .c.fe{background:var(--sunbg);color:var(--sun)}.cal .c.ro{background:var(--viobg);color:var(--vio)}
+.cal .c.pe{background:var(--skybg);color:var(--sky)}.cal .c.ma{background:var(--pinkbg);color:var(--pink)}.cal .c.ho{outline:2px dashed var(--line)}
+.cal .c.td{outline:2px solid var(--pri)}.cal .c i{display:block;font-style:normal;font-size:9px;font-weight:600;opacity:.8}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px}.legend b{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.big-count{font-size:44px;font-weight:800;line-height:1}
 .quick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .quick .btn{flex-direction:column;padding:12px 6px;font-size:13px}
 .quick .btn b{font-size:22px}
@@ -130,6 +140,7 @@ details summary{cursor:pointer;color:var(--pri);font-size:14px;margin-top:8px;fo
 </nav>
 <div class="pop" id="toast"><span class="em" id="toastEm"></span><span id="toastTx"></span></div>
 <div class="modal hide" id="modal"><div class="box"><p id="mText"></p><input id="mInput" class="hide" autocomplete="off" autocapitalize="characters"><div class="btns" style="justify-content:flex-end"><button class="btn sec" id="mNo">Annulla</button><button class="btn" id="mOk">OK</button></div></div></div>
+<div class="modal hide" id="sheet"><div class="box" id="sheetBox"></div></div>
 <input type="file" id="fileBackup" accept=".json,application/json" class="hide">
 
 <script type="text/plain" id="pdfjs-src">/**
@@ -208,7 +219,7 @@ const DEF_SETTINGS = {
   // bonus presenze
   bonusImporto: 450, bonusDetr: 15, bonusPeriodo: "lug-giu", bonusGiorni: "calendario",
   // varie
-  personalita: "sarcastica", pdfPassword: "", visiteOre: 14, matrimonialeGg: 15
+  personalita: "sarcastica", pdfPassword: "", visiteOre: 14, matrimonialeGg: 15, mailPaghe: "", mioNome: "", lastBackup: ""
 };
 let S = load();
 function load(){
@@ -240,7 +251,9 @@ const PERS = {
   permesso:[["Permesso registrato.","✅"]], malattia:[["Malattia registrata.","✅"]], buono:[["Buono registrato.","✅"]], set:[["Impostazioni salvate.","✅"]],
   matrimoniale:[["Congedo matrimoniale registrato. Auguri!","💍"]], maternita:[["Congedo registrato. Auguri!","💕"]], lutto:[["Congedo registrato. Condoglianze.","🕊️"]],
   sciopero:[["Sciopero registrato.","✅"]], visita:[["Visita registrata. Restano {r} h di visite mediche quest'anno.","🩺"]],
-  noAno:["Nessuna anomalia aperta.","✅"], bonus0:"", bonusLow:"", bonusFull:"", bonusMid:"", troppeFerie:"", hello:["Modalità seria attivata.","🧐"]
+  noAno:["Nessuna anomalia aperta.","✅"], bonus0:"", bonusLow:"", bonusFull:"", bonusMid:"", troppeFerie:"", hello:["Modalità seria attivata.","🧐"],
+  countdown:"Mancano {n} giorni alle ferie.", inFerie:"Sei in ferie.", stats:"", backup:"Ultimo backup: {g}. Conviene farne uno.", backupMai:"Non hai ancora fatto un backup dei dati.",
+  nettoBasso:"Il netto di {m} è più basso della media degli ultimi mesi.", importOk:[["{n} assenze registrate dal cedolino.","📥"]]
  },
  sarcastica: {
   cedOk:[["Anche questo mese puoi mangiare.","🍝"],["Cedolino in ordine. Sospetto, ma ok.","🧐"],["Tutto torna. Segnatelo sul calendario, non ricapita spesso.","📅"],["Nessuna anomalia. L'ufficio paghe oggi era in forma.","💅"],["Conti giusti al centesimo. Quasi commovente.","🥹"]],
@@ -260,7 +273,10 @@ const PERS = {
   noAno:["Nessuna anomalia aperta. L'ufficio paghe ti ha graziato.","😇"],
   bonus0:"Per il bonus presenze ritenta il prossimo anno. 🍀", bonusLow:"Bonus presenze agli sgoccioli: niente starnuti fino alla fine del periodo. 🤞",
   bonusFull:"Bonus presenze intatto: sei una roccia. 💪", bonusMid:"Il bonus presenze ha qualche acciacco, ma resiste. 🩹",
-  troppeFerie:"Hai più ferie che pazienza: usale! 🏝️", hello:["Sarcasmo attivato. Ti avevo avvisata.","😏"]
+  troppeFerie:"Hai più ferie che pazienza: usale! 🏝️", hello:["Sarcasmo attivato. Ti avevo avvisata.","😏"],
+  countdown:"Mancano {n} giorni alle ferie. Resisti.", inFerie:"Sei in ferie: posa il telefono.", stats:"{ore} ore di lavoro e {buoni} di pranzi: il pareggio è lontano.",
+  backup:"Ultimo backup: {g}. Vivi pericolosamente, eh?", backupMai:"Mai fatto un backup. Ottimismo o incoscienza?",
+  nettoBasso:"Il netto di {m} è più basso del solito. Qualcuno ha fatto la cresta?"
  },
  cattiva: {
   cedOk:[["Tutto giusto. Stavolta all'ufficio paghe è andata bene.","😒"],["Nessun errore. Devono aver cambiato persona.","🤨"],["Conti giusti. Non abituarti.","🙄"],["Cedolino perfetto. Mi annoio.","🥱"]],
@@ -281,11 +297,15 @@ const PERS = {
   bonus0:"Bonus presenze: zero. Ritenta il prossimo anno, magari con un sistema immunitario nuovo. 💀",
   bonusLow:"Del bonus presenze restano le briciole. Vietato starnutire. 😤",
   bonusFull:"Bonus presenze intatto. Sei sicura di essere umana? 🤖", bonusMid:"Il bonus presenze perde pezzi. Come la tua salute. 🩹",
-  troppeFerie:"Hai più ferie che vita sociale. Usale, prima che te le rubino. 🏝️", hello:["Modalità cattiva attivata. Nessuno è al sicuro.","😈"]
+  troppeFerie:"Hai più ferie che vita sociale. Usale, prima che te le rubino. 🏝️", hello:["Modalità cattiva attivata. Nessuno è al sicuro.","😈"],
+  countdown:"Ancora {n} giorni di sofferenza prima delle ferie.", inFerie:"Sei in ferie e controlli l'app delle ferie. Grave.", stats:"{ore} ore regalate all'azienda quest'anno. Contenta?",
+  backup:"Ultimo backup: {g}. Quando perderai tutto, non piangere da me.", backupMai:"Zero backup. Il telefono cade, i dati spariscono, tu piangi.",
+  nettoBasso:"Il netto di {m} è più basso del solito. Ti stanno spennando?"
  }
 };
 const persona = () => PERS[S.settings.personalita] || PERS.sarcastica;
 const frase = k => (persona()[k] !== undefined && persona()[k] !== "" ? persona()[k] : (PERS.seria[k]||""));
+const fill = (t,v) => String(t).replace(/\{(\w+)\}/g,(_,x)=>v[x]??"");
 function quip(k, v={}){
   let q = frase(k) || PERS.seria.permesso; if(Array.isArray(q[0])) q = q[Math.floor(Math.random()*q.length)];
   let [t,e] = q; const n=v.n;
@@ -586,18 +606,30 @@ function liveAlerts(L){
     if(gg<0) al.push({k:"bad", t:`Circa ${num(l.rest)} h di ROL del ${l.anno} risultano scadute (fine ${fmtM(scad)}).`});
     else if(gg<=4) al.push({k:"warn", t:`Circa ${num(l.rest)} h di ROL del ${l.anno} scadono a fine ${fmtM(scad)}.`});
   }
-  let godAnno = L.days.filter(x=>x.tipo==="ferie" && x.d.startsWith(Y+"")).reduce((s,x)=>s+x.gg,0);
-  const cy = S.cedolini.filter(c=>c.mese.startsWith(Y+"")).sort((a,b)=>a.mese<b.mese?1:-1)[0];
-  if(cy && st.modoMaturato==="progressivo"){ const cv=cedConv(cy); if(isNum(cv.F.god)){ const fino=addMonths(cy.mese, st.godutoRif==="precedente"?-1:0); godAnno = cv.F.god + L.days.filter(x=>x.tipo==="ferie" && x.d.startsWith(Y+"") && ym(x.d)>fino).reduce((s,x)=>s+x.gg,0); } }
+  const godAnno = usatoAnno("ferie", Y+"");
   if(+today.slice(5,7)>=9 && godAnno<10) al.push({k:"warn", t:`Nel ${Y} risultano ${num(godAnno)} giorni di ferie godute: per legge almeno 2 settimane (10 giorni lavorativi) vanno godute entro l'anno.`});
   const last = L.rows[L.rows.length-1];
   if(last && last.ferieRes<0) al.push({k:"bad", t:"Il residuo ferie calcolato è negativo."});
   if(last && last.rolRes<0) al.push({k:"bad", t:"Il residuo ROL calcolato è negativo."});
+  if(S.cedolini.length+S.assenze.length>0){
+    const lb=st.lastBackup, g=lb?Math.floor((Date.now()-new Date(lb))/864e5):null;
+    if(g===null) al.push({k:"info", t:frase("backupMai"), btn:"💾 Fai il backup ora"});
+    else if(g>30) al.push({k:"info", t:fill(frase("backup"),{g: g+" giorni fa"}), btn:"💾 Fai il backup ora"});
+  }
+  const ns=nettoSerie(); if(ns.length>=3){ const lastN=ns[ns.length-1], prev=ns.slice(-7,-1), avg=prev.reduce((a,x)=>a+x.v,0)/prev.length; if(lastN.v<avg*0.95) al.push({k:"warn", t:fill(frase("nettoBasso"),{m:fmtM(lastN.m)})+` (${eur(lastN.v)} contro una media di ${eur(avg)})`}); }
   if(frase("troppeFerie") && last && last.ferieRes>30) al.push({k:"info", t:frase("troppeFerie")});
   const cs = congediStats(Y+"");
   if(cs.visita > +st.visiteOre) al.push({k:"warn", t:`Nel ${Y} hai usato ${num(cs.visita)} h di visite mediche su ${num(st.visiteOre)}: le ore in più potrebbero essere scalate dai ROL o non pagate.`});
   if(cs.matrimonialeCal > +st.matrimonialeGg) al.push({k:"warn", t:`Congedo matrimoniale: ${cs.matrimonialeCal} giorni registrati su ${st.matrimonialeGg} previsti.`});
   return al;
+}
+function usatoAnno(tipo, Y){
+  const st=S.settings, {days}=expand(), reg=x=>x.tipo===tipo && x.d.startsWith(Y), val=x=>tipo==="ferie"?x.gg:x.ore;
+  let tot=days.filter(reg).reduce((s,x)=>s+val(x),0);
+  const cy=S.cedolini.filter(c=>c.mese.startsWith(Y)).sort((a,b)=>a.mese<b.mese?1:-1)[0];
+  if(cy && st.modoMaturato==="progressivo"){ const cv=cedConv(cy)[tipo==="ferie"?"F":"R"];
+    if(isNum(cv.god)){ const fino=addMonths(cy.mese, st.godutoRif==="precedente"?-1:0); tot=cv.god+days.filter(x=>reg(x)&&ym(x.d)>fino).reduce((s,x)=>s+val(x),0); } }
+  return tot;
 }
 function congediStats(Y){
   const {days}=expand(), r={visita:0, matrimonialeCal:0, per:{}};
@@ -611,6 +643,36 @@ function congediCard(){
   for(const k of Object.keys(SUB)){ if(k==="visita"||!c.per[k]) continue; const p=c.per[k];
     rows.push(`<li><div class="main"><div class="t">${SUB[k].l}</div><div class="d">${SUB[k].cal?`${p.cal||0} gg di calendario${k==="matrimoniale"?" su "+st.matrimonialeGg:""}`:p.gg?`${p.gg} gg (${num(p.ore)} h)`:`${num(p.ore)} h`}</div></div></li>`); }
   return `<div class="card"><h2>📝 Permessi e congedi ${Y}</h2><ul class="list">${rows.join("")}</ul></div>`;
+}
+function doBackup(){ S.settings.lastBackup=new Date().toISOString(); save(); download("rollercoaster-backup-"+todayS()+".json", JSON.stringify(S,null,1), "application/json"); render(); toast("Backup salvato nei Download","💾"); }
+function countdownCard(){
+  const t=todayS(), isF=a=>a.tipo==="ferie"||(a.tipo==="permesso"&&a.sub==="matrimoniale");
+  const ora=S.assenze.find(a=>isF(a)&&a.dal<=t&&a.al>=t);
+  if(ora) return `<div class="card" style="background:var(--sunbg);border:0"><div class="big-count">🏝️</div><p style="margin:8px 0 0;font-weight:700">${esc(frase("inFerie"))}</p><p class="muted small">Fino al ${fmtD(ora.al)}.</p></div>`;
+  const nx=S.assenze.filter(a=>isF(a)&&a.dal>t).sort((a,b)=>a.dal<b.dal?-1:1)[0];
+  if(!nx) return `<div class="card" style="display:flex;align-items:center;gap:12px"><span style="font-size:30px">🧮</span><div class="main" style="flex:1"><b>Nessuna ferie in programma.</b><div class="muted small">Guarda i ponti dei prossimi mesi.</div></div><button class="btn sm" onclick="go('plan')">Pianifica</button></div>`;
+  const n=Math.round((parseD(nx.dal)-parseD(t))/864e5);
+  return `<div class="card" style="background:var(--sunbg);border:0;display:flex;align-items:center;gap:14px" onclick="go('plan')"><div class="big-count" style="color:var(--sun)">${n}</div><div><b>${esc(fill(frase("countdown"),{n}))}</b><div class="muted small">Dal ${fmtD(nx.dal)}${nx.al!==nx.dal?" al "+fmtD(nx.al):""}</div></div></div>`;
+}
+function statsCard(){
+  const st=S.settings, Y=todayS().slice(0,4), cy=S.cedolini.filter(c=>c.mese.startsWith(Y)).map(cedConv);
+  const ore=S.cedolini.filter(c=>c.mese.startsWith(Y)&&c.extra&&isNum(c.extra.oreLav)).reduce((a,c)=>a+ +c.extra.oreLav,0);
+  let buoni=cy.filter(c=>isNum(c.buoni)).reduce((a,c)=>a+c.buoni,0);
+  if(!buoni && st.meseInizio) for(let m=[st.meseInizio,Y+"-01"].sort().pop(); m<=ym(todayS()) && m.startsWith(Y); m=addMonths(m,1)) buoni+=monthStats(m, m===ym(todayS())?todayS():null).buoni;
+  const netto=S.cedolini.filter(c=>c.mese.startsWith(Y)&&c.extra&&isNum(c.extra.netto)).reduce((a,c)=>a+ +c.extra.netto,0);
+  const fe=usatoAnno("ferie",Y), ro=usatoAnno("rol",Y), ma=malattiaStats(expand().days).anno;
+  const tile=(e,l,v)=>`<div style="background:var(--bg);border-radius:12px;padding:8px"><div style="font-size:18px">${e}</div><div style="font-weight:800;font-size:17px">${v}</div><div class="muted" style="font-size:11px">${l}</div></div>`;
+  const q = ore ? fill(frase("stats"),{ore:num(ore,0), buoni:eur(buoni*st.buonoValore)}) : "";
+  return `<div class="card"><h2>📊 Il tuo ${Y}</h2><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+    ${tile("🏖️","giorni di ferie",num(fe,1))}${tile("⏱️","ore di ROL",num(ro,1))}${tile("🤒","giorni di malattia",ma)}
+    ${tile("💼","ore lavorate*",ore?num(ore,0):"—")}${tile("🍝","di buoni pasto",eur(buoni*st.buonoValore).replace(",00",""))}${tile("💶","netto incassato*",netto?eur(netto).replace(/,\d\d/,""):"—")}</div>
+    ${q?`<p class="quip">${esc(q)}</p>`:""}<p class="muted small">* dai cedolini caricati di quest'anno.</p></div>`;
+}
+function contCard(){
+  const c=[...S.cedolini].filter(c=>c.extra&&c.extra.cont).sort((a,b)=>a.mese<b.mese?1:-1)[0]; if(!c) return "";
+  const N={perm:"Permessi (PERM.)", rol:"ROL (riga ROL.)", fless:"Flessibilità (FLESS.)"};
+  const rows=Object.entries(c.extra.cont).filter(([k,o])=>N[k] && Object.values(o).some(v=>+v)).map(([k,o])=>`<li><div class="main"><div class="t">${N[k]}</div><div class="d">Residuo ${num(+o.res||0)} · maturato ${num(+o.mat||0)} · goduto ${num(+o.god||0)}</div></div></li>`);
+  return rows.length?`<div class="card"><h2>⏳ Altri contatori (cedolino di ${fmtM(c.mese)})</h2><ul class="list">${rows.join("")}</ul></div>`:"";
 }
 function malattiaStats(days){
   const today=todayS(), Y=today.slice(0,4), st=S.settings;
@@ -633,11 +695,13 @@ function dialog(text, withInput, def){
   });
 }
 const ask = t => dialog(t,false);
+function sheet(html, onBind){ const m=$("#sheet"); $("#sheetBox").innerHTML=html; m.classList.remove("hide"); const close=()=>m.classList.add("hide"); m.onclick=e=>{ if(e.target===m) close(); }; onBind&&onBind(close); return close; }
+async function copia(t){ try{ await navigator.clipboard.writeText(t); return true; }catch(e){ const ta=document.createElement("textarea"); ta.value=t; document.body.appendChild(ta); ta.select(); let ok=false; try{ ok=document.execCommand("copy"); }catch(_){} ta.remove(); return ok; } }
 const askText = (t,d) => dialog(t,true,d);
 document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>go(b.dataset.v));
-function go(v){ view=v; document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===v)); render(); window.scrollTo(0,0); }
+function go(v){ view=v; document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===(v==="plan"?"reg":v))); render(); window.scrollTo(0,0); }
 const bind = {};
-function render(){ const V={home:vHome,reg:vReg,buoni:vBuoni,ced:vCed,ano:vAno,set:vSet}[view]; $("#view").innerHTML=V(); (bind[view]||(()=>{}))(); updateDot(); }
+function render(){ const V={home:vHome,reg:vReg,buoni:vBuoni,ced:vCed,ano:vAno,set:vSet,plan:vPlan}[view]; $("#view").innerHTML=V(); (bind[view]||(()=>{}))(); updateDot(); }
 
 /* ---------- Home ---------- */
 function bonusCard(){
@@ -676,6 +740,7 @@ function vHome(){
   const lim = +st.comportoLimite;
   const recent = L.rows.slice(-6).reverse();
   return `
+  ${countdownCard()}
   <div class="kpis">
     <div class="kpi sun"><span class="ic">🏖️</span><div class="l">Ferie residue</div><div class="v">${num(last.ferieRes,1)} <small>gg</small></div><div class="s">a fine ${fmtM(last.mese)}</div></div>
     <div class="kpi vio"><span class="ic">⏱️</span><div class="l">ROL residui</div><div class="v">${num(last.rolRes,1)} <small>h</small></div><div class="s">≈ ${num(last.rolRes/OG(),1)} giorni da ${num(OG())} h</div></div>
@@ -684,9 +749,11 @@ function vHome(){
     ${bonusCard()}
   </div>
   ${aperte?`<div class="alert bad" onclick="go('ano')" style="cursor:pointer"><b>🚨 ${aperte} anomali${aperte===1?'a':'e'} da verificare</b> nei cedolini →</div>`:''}
-  ${al.map(a=>`<div class="alert ${a.k}">${esc(a.t)}</div>`).join("")}
+  ${al.map(a=>`<div class="alert ${a.k}">${esc(a.t)}${a.btn?`<div class="btns"><button class="btn sm" onclick="doBackup()">${a.btn}</button></div>`:""}</div>`).join("")}
   ${cmp}
   ${congediCard()}
+  ${statsCard()}
+  ${contCard()}
   <div class="card"><h2>📊 Movimenti per mese</h2><div class="scroll"><table>
     <tr><th>Mese</th><th>Ferie +</th><th>Ferie −</th><th>Res.</th><th>ROL +</th><th>ROL −</th><th>Res.</th></tr>
     ${recent.map(r=>`<tr><td>${fmtMs(r.mese)}</td><td>${num(r.ferieMat)}</td><td>${r.ferieGod?num(r.ferieGod):'·'}</td><td><b>${num(r.ferieRes)}</b></td><td>${num(r.rolMat)}</td><td>${r.rolGod?num(r.rolGod):'·'}</td><td><b>${num(r.rolRes)}</b></td></tr>`).join("")}
@@ -713,7 +780,7 @@ function vReg(){
   };
   const groups={}; for(const a of list){ const k=ym(a.dal); (groups[k]=groups[k]||[]).push(a); }
   const ore = t==="rol"||t==="permesso";
-  return `<div class="card"><h2>Registra un'assenza</h2>
+  return `${calCard()}<div class="card" id="regForm"><h2>Registra un'assenza</h2>
     <div class="seg" id="segTipo">${Object.keys(TIPI).map(x=>`<button data-t="${x}" class="${t===x?'on':''}">${TIPI[x]}</button>`).join("")}</div>
     ${t==="permesso"?`<label>Tipo</label><select id="aSub">${Object.entries(SUB).map(([k,v])=>`<option value="${k}" ${k===regSub?"selected":""}>${v.l}</option>`).join("")}</select>`:""}
     <div class="row"><div><label>Dal</label><input type="date" id="aDal" value="${today}"></div>
@@ -730,7 +797,26 @@ function vReg(){
     ${list.length?Object.keys(groups).map(k=>`<h3>${fmtM(k)}</h3><ul class="list">${groups[k].map(a=>{const [d1,d2]=desc(a);return `<li><span class="tag ${a.tipo}">${tagLabel(a)}</span><div class="main"><div class="t">${d1}</div><div class="d">${d2}${a.nota?" · "+esc(a.nota):""}</div></div><button class="btn sm bad" data-del="${a.id}">✕</button></li>`}).join("")}</ul>`).join(""):`<div class="empty"><span class="big">🗓️</span>Nessuna assenza registrata.<br>Aggiungi anche quelle passate per avere controlli completi.</div>`}
     </div>`;
 }
+let calM = null;
+function calCard(){
+  const today=todayS(); calM=calM||ym(today);
+  const {days}=expand(), map={}, pr={malattia:4,ferie:3,rol:2,permesso:1};
+  for(const x of days){ if(!map[x.d] || pr[x.tipo]>pr[map[x.d].tipo]) map[x.d]=x; }
+  const cls={ferie:"fe",rol:"ro",permesso:"pe",malattia:"ma"}, lab={ferie:"ferie",rol:"ROL",permesso:"perm.",malattia:"mal."};
+  const first=parseD(calM+"-01"), off=(first.getUTCDay()+6)%7, nd=+lastDay(calM).slice(8);
+  let cells=["L","M","M","G","V","S","D"].map(d=>`<div class="h">${d}</div>`).join("")+"<div></div>".repeat(off);
+  for(let i=1;i<=nd;i++){ const d=calM+"-"+pad(i), w=parseD(d).getUTCDay(), x=map[d];
+    const c=["c", (w===0||w===6)?"we":"", (!isWorkday(d)&&w!==0&&w!==6)?"ho":"", x?cls[x.tipo]:"", d===today?"td":""].join(" ");
+    cells+=`<div class="${c}" data-day="${d}">${i}${x?`<i>${x.tipo==="permesso"?(SUB[x.sub||"altro"].l.split(" ")[0]):lab[x.tipo]}</i>`:(!isWorkday(d)&&w!==0&&w!==6?"<i>festa</i>":"")}</div>`; }
+  return `<div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button class="btn sm sec" id="calP">‹</button><b style="text-transform:capitalize">${fmtM(calM)}</b><button class="btn sm sec" id="calN">›</button></div>
+    <div class="cal">${cells}</div>
+    <div class="legend"><span><b style="background:var(--sunbg);outline:1px solid var(--sun)"></b>ferie</span><span><b style="background:var(--viobg);outline:1px solid var(--vio)"></b>ROL</span><span><b style="background:var(--skybg);outline:1px solid var(--sky)"></b>permessi</span><span><b style="background:var(--pinkbg);outline:1px solid var(--pink)"></b>malattia</span></div>
+    <p class="muted small">Tocca un giorno per registrare un'assenza in quella data.</p>
+    <button class="btn sec full" onclick="go('plan')">🧮 Simula ferie e trova i ponti</button></div>`;
+}
 bind.reg = () => {
+  $("#calP").onclick=()=>{ calM=addMonths(calM,-1); render(); }; $("#calN").onclick=()=>{ calM=addMonths(calM,1); render(); };
+  document.querySelectorAll("[data-day]").forEach(c=>c.onclick=()=>{ $("#aDal").value=c.dataset.day; $("#aAl").value=c.dataset.day; $("#aDal").dispatchEvent(new Event("change")); $("#regForm").scrollIntoView({behavior:"smooth"}); });
   document.querySelectorAll("#segTipo button").forEach(b=>b.onclick=()=>{regTipo=b.dataset.t; render();});
   if($("#aSub")){ $("#aSub").onchange=e=>{ regSub=e.target.value; render(); }; if($("#aGiorn")){ $("#aGiorn").checked=!SUB[regSub].ore; } }
   const dal=$("#aDal"), al=$("#aAl"), mz=$("#aMezza"), gi=$("#aGiorn"), oreI=$("#aOre");
@@ -766,6 +852,60 @@ bind.reg = () => {
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{ if(!await ask("Eliminare questa assenza?")) return; S.assenze=S.assenze.filter(x=>x.id!==b.dataset.del); recheck(); render(); });
 };
 
+/* ---------- Pianifica: simulatore e ponti ---------- */
+const NOMI_FESTE={"01-01":"🎆 Capodanno","01-06":"🧦 Epifania","04-25":"🇮🇹 Liberazione","05-01":"🛠️ Festa del lavoro","06-02":"🇮🇹 Festa della Repubblica","08-15":"☀️ Ferragosto","11-01":"🕯️ Ognissanti","12-08":"⛄ Immacolata","12-25":"🎄 Natale","12-26":"🎄 Santo Stefano"};
+function nomeFesta(d){ const k=d.slice(5); if(NOMI_FESTE[k]) return NOMI_FESTE[k]; if(k===S.settings.santoPatrono) return "⛪ Santo patrono"; return "🐣 Pasquetta"; }
+function proj(M, campo){
+  const L=ledger(); if(!L||!L.rows.length) return null; const last=L.rows[L.rows.length-1], key=campo==="ferie"?"ferieRes":"rolRes";
+  const r=L.rows.find(x=>x.mese===M); if(r) return r[key]; if(M<last.mese) return null;
+  let v=last[key]+monthsBetween(last.mese,M)*(campo==="ferie"?ferieMese():rolMese());
+  for(const x of L.days) if(x.tipo===campo && ym(x.d)>last.mese && ym(x.d)<=M) v-= campo==="ferie"?x.gg:x.ore;
+  return v;
+}
+function ponti(){
+  const t0=parseD(todayS()), D=[]; for(let i=0;i<380;i++) D.push(ymd(new Date(t0.getTime()+i*864e5)));
+  const free=D.map(d=>!isWorkday(d)), out=[], seen=new Set();
+  D.forEach((h,hi)=>{ const w=parseD(h).getUTCDay(); if(hi>=366 || w===0 || w===6 || isWorkday(h)) return;
+    let best=null;
+    for(let a=Math.max(0,hi-12); a<=hi; a++){ if(!free[a] && a!==hi) continue; if(a>0 && free[a-1]) continue;
+      for(let b=hi; b<Math.min(D.length,hi+13); b++){ if(!free[b]) continue; if(b<D.length-1 && free[b+1]) continue;
+        const tot=b-a+1; if(tot<3) continue; let fe=0; for(let i=a;i<=b;i++) if(!free[i]) fe++; if(fe>4) continue;
+        const sc = fe===0 ? 100+tot : tot/fe + tot/100; if(fe>0 && tot/fe<2) continue;
+        if(!best || sc>best.sc) best={a,b,fe,tot,sc}; } }
+    if(!best) return; const k=best.a+"-"+best.b; if(seen.has(k)){ out.find(o=>o.k===k).feste.push(nomeFesta(h)); return; } seen.add(k);
+    const wd=[]; for(let i=best.a;i<=best.b;i++) if(!free[i]) wd.push(D[i]);
+    out.push({k, dal:D[best.a], al:D[best.b], fe:best.fe, tot:best.tot, feste:[nomeFesta(h)], fDal:wd[0], fAl:wd[wd.length-1]});
+  });
+  return out;
+}
+let simDal=null, simAl=null;
+function vPlan(){
+  const t=todayS(); simDal=simDal||t; simAl=simAl||simDal;
+  const P=ponti(), gs=["dom","lun","mar","mer","gio","ven","sab"], gd=d=>gs[parseD(d).getUTCDay()]+" "+fmtD(d).slice(0,5);
+  return `<button class="btn sm sec" onclick="go('reg')" style="margin-bottom:10px">← Assenze</button>
+  <div class="card"><h2>🧮 Simulatore ferie</h2>
+    <div class="row"><div><label>Dal</label><input type="date" id="sDal" value="${simDal}"></div><div><label>Al</label><input type="date" id="sAl" value="${simAl}"></div></div>
+    <div id="simRes" style="margin-top:12px"></div>
+    <button class="btn full" id="simReg">Registra come ferie</button></div>
+  <div class="card"><h2>🌉 Ponti dei prossimi 12 mesi</h2>
+    ${S.settings.santoPatrono?"":`<p class="muted small">Imposta il santo patrono in Opzioni per includerlo.</p>`}
+    <ul class="list">${P.map((p,i)=>`<li><div class="main"><div class="t">${p.feste.join(" + ")}</div><div class="d">${gd(p.dal)} → ${gd(p.al)} · ${p.fe?`<b>${p.fe} giorn${p.fe===1?"o":"i"} di ferie</b> per <b>${p.tot} giorni</b> a casa`:`<b>${p.tot} giorni</b> a casa, <b>gratis</b>`}</div></div>${p.fe?`<button class="btn sm sec" data-sim="${i}">Simula</button>`:""}</li>`).join("")}</ul></div>`;
+}
+bind.plan = () => {
+  const P=ponti();
+  const calc=()=>{ const st=S.settings; let d=$("#sDal").value, a=$("#sAl").value; if(a<d){ a=d; $("#sAl").value=d; } simDal=d; simAl=a;
+    let n=0; eachDay(d,a,x=>{ if(isWorkday(x)) n++; });
+    let s0=parseD(d), e0=parseD(a); while(!isWorkday(ymd(new Date(s0.getTime()-864e5)))) s0=new Date(s0.getTime()-864e5); while(!isWorkday(ymd(new Date(e0.getTime()+864e5)))) e0=new Date(e0.getTime()+864e5);
+    const tot=Math.round((e0-s0)/864e5)+1, M=ym(a), pf=proj(M,"ferie"), pr=proj(M,"rol");
+    let h=`<div style="display:flex;gap:14px;align-items:center"><div class="big-count" style="color:var(--sun)">${n}</div><div>giorn${n===1?"o":"i"} di ferie (${num(n*OG())} h)<br><span class="muted small">per stare a casa <b>${tot} giorni</b>: ${fmtD(ymd(s0))} → ${fmtD(ymd(e0))}</span></div></div>`;
+    if(pf!==null){ const dopo=pf-n; h+=`<p class="small">Ferie previste a fine ${fmtM(M)}: <b>${num(pf,1)}</b> → <b style="color:${dopo<0?'var(--bad)':'var(--ok)'}">${num(dopo,1)} gg</b></p>`;
+      if(dopo<0){ const manc=-dopo*OG(); h+=`<div class="alert ${pr!==null&&pr>=manc?"warn":"bad"}">Mancano ${num(-dopo,1)} giorni di ferie. ${pr!==null?(pr>=manc?`Potresti coprirli con ${num(manc)} h di ROL (ne avrai ${num(pr,1)}).`:`Anche con i ROL (${num(pr,1)} h) non basta.`):""}</div>`; } }
+    $("#simRes").innerHTML=h; };
+  $("#sDal").onchange=calc; $("#sAl").onchange=calc; calc();
+  $("#simReg").onclick=async()=>{ if(!await ask(`Registrare le ferie dal ${fmtD(simDal)} al ${fmtD(simAl)}?`)) return; S.assenze.push({id:uid(), tipo:"ferie", dal:simDal, al:simAl, nota:"Dal simulatore"}); recheck(); quip("ferie"); go("home"); };
+  document.querySelectorAll("[data-sim]").forEach(b=>b.onclick=()=>{ const p=P[+b.dataset.sim]; simDal=p.fDal; simAl=p.fAl; render(); window.scrollTo({top:0,behavior:"smooth"}); });
+};
+
 /* ---------- Buoni ---------- */
 function vBuoni(){
   const st=S.settings;
@@ -797,7 +937,7 @@ bind.buoni = () => {
 };
 
 /* ---------- Cedolini ---------- */
-let cedDraft = null, cedPreview = null, cedFound = "";
+let cedDraft = null, cedPreview = null, cedFound = "", cedProposte = null;
 function vCed(){
   const st=S.settings;
   const d = cedDraft || {mese: ym(todayS()), ferie:{}, rol:{}, extra:{}};
@@ -818,8 +958,11 @@ function vCed(){
     <h3>⏱️ ROL / permessi (in ${uR})</h3><div class="grid4">${fld("rol","resAP","Res. iniz.")}${fld("rol","mat","Maturato")}${fld("rol","god","Goduto")}${fld("rol","res","Residuo")}</div>
     <h3>🍝 Presenze e buoni pasto ${st.buoniRif==="precedente"?"(del mese precedente)":""}</h3><div class="grid3">${fld("extra","oreLav","Ore lavorate")}${fld("extra","buoniN","N. buoni")}${fld("extra","buoniEuro","Buoni €")}</div>
     <h3>🎁 Bonus presenze (di solito a luglio)</h3><div class="grid3">${fld("extra","bonus","Importo €")}</div>
+    <h3>💶 Busta paga</h3><div class="grid3">${fld("extra","netto","Netto €")}${fld("extra","lordo","Lordo €")}${fld("extra","trattenute","Trattenute €")}</div>
     <p class="muted small">Maturato e goduto ${st.modoMaturato==="mese"?"<b>del mese</b>":"<b>progressivi dall'inizio dell'anno</b>"}. Unità e modalità si cambiano in Opzioni → Formato cedolino. Lascia vuoto ciò che il cedolino non riporta.</p>
     <div class="btns"><button class="btn" id="cSave" style="flex:1">Salva e controlla</button>${cedDraft?`<button class="btn sec" id="cCancel">Annulla</button>`:""}</div></div>
+    ${impCard()}
+    ${nettoCard()}
     <div class="card"><h2>Cedolini salvati</h2>
     ${list.length?`<ul class="list">${list.map(c=>{const n=nAno(c.mese);const cv=cedConv(c);return `<li><div class="main"><div class="t">${fmtM(c.mese)} ${n?`<span class="tag aperta">${n} anomali${n===1?'a':'e'}</span>`:`<span class="tag risolta">OK</span>`}</div><div class="d">Ferie ${isNum(cv.F.res)?num(cv.F.res)+" gg":"—"} · ROL ${isNum(cv.R.res)?num(cv.R.res)+" h":"—"}${isNum(cv.buoni)?" · "+num(cv.buoni)+" buoni":""}</div></div><button class="btn sm sec" data-ed="${c.id}">Modifica</button><button class="btn sm bad" data-dc="${c.id}">✕</button></li>`}).join("")}</ul>`:`<div class="empty"><span class="big">🧾</span>Nessun cedolino salvato.</div>`}
     </div>`;
@@ -834,6 +977,7 @@ bind.ced = () => {
       cedPreview=null; cedFound=res.found||"Nessuna riga utile trovata. Inserisci i valori a mano.";
       if(res.mese) cedDraft.mese=res.mese;
       Object.assign(cedDraft.ferie,res.ferie); Object.assign(cedDraft.rol,res.rol); Object.assign(cedDraft.extra,res.extra);
+      if(res.pres){ cedDraft.pres=res.pres; cedProposte=presenzeProposte(res.pres); } else cedProposte=null;
       render(); toast(res.trovati?"Valori letti: controllali prima di salvare":"Valori non trovati: inseriscili a mano", res.trovati?"👀":"🤷");
     }catch(err){ console.error(err); toast("Impossibile leggere il PDF","😵"); }
   };
@@ -845,15 +989,50 @@ bind.ced = () => {
     if(c.id){ const i=S.cedolini.findIndex(x=>x.id===c.id); if(i>=0) S.cedolini[i]=c; else S.cedolini.push(c); }
     else { c.id=uid(); c.importato=new Date().toISOString(); S.cedolini.push(c); }
     cedDraft=null; cedPreview=null; cedFound=""; recheck(); render();
+    if(cedProposte && cedProposte.some(p=>!p.gia && p.tipo!=="?")) setTimeout(()=>{ const el=$("#impCard"); if(el) el.scrollIntoView({behavior:"smooth"}); }, 50);
     const n=S.anomalie.filter(a=>a.mese===c.mese&&a.stato==="aperta").length;
     n ? quip("cedKo",{n}) : quip("cedOk");
   };
-  if($("#cCancel")) $("#cCancel").onclick=()=>{cedDraft=null;cedPreview=null;cedFound="";render();};
+  if($("#cCancel")) $("#cCancel").onclick=()=>{cedDraft=null;cedPreview=null;cedFound="";cedProposte=null;render();};
+  if($("#impSave")) $("#impSave").onclick=()=>{
+    const sel=[]; document.querySelectorAll("[data-imp]").forEach(ch=>{ if(ch.checked){ const p={...cedProposte[+ch.dataset.imp]}; const so=$("#impT"+ch.dataset.imp); if(so){ const [t,sb]=so.value.split(":"); p.tipo=t; p.sub=sb||null; } sel.push(p); } });
+    const add=proposteToAssenze(sel); cedProposte=null; recheck(); render();
+    toast(add.length?`${add.length} assenz${add.length===1?"a registrata":"e registrate"} dal cedolino`:"Nessuna assenza registrata", add.length?"📥":"🤷");
+  };
+  if($("#impNo")) $("#impNo").onclick=()=>{ cedProposte=null; render(); };
+  document.querySelectorAll("[data-imp]").forEach(ch=>{ const so=$("#impT"+ch.dataset.imp); if(so) so.onchange=()=>{ ch.checked = so.value!=="?"; }; });
   document.querySelectorAll("[data-ed]").forEach(b=>b.onclick=()=>{ const c=S.cedolini.find(x=>x.id===b.dataset.ed); cedDraft=JSON.parse(JSON.stringify(c)); cedDraft.extra=cedDraft.extra||{}; cedPreview=null; cedFound=""; render(); window.scrollTo(0,0); });
   document.querySelectorAll("[data-dc]").forEach(b=>b.onclick=async()=>{ if(!await ask("Eliminare il cedolino?")) return; S.cedolini=S.cedolini.filter(x=>x.id!==b.dataset.dc); recheck(); render(); });
 };
+function impCard(){
+  if(!cedProposte || !cedProposte.length) return "";
+  const pr = cedDraft&&cedDraft.pres || {mese:""};
+  const TT=[["ferie","🏖️ Ferie"],["rol","⏱️ ROL"],["malattia","🤒 Malattia"],...Object.entries(SUB).map(([k,v])=>["permesso:"+k,v.l]),["?","Ignora"]];
+  const rows=cedProposte.map((p,i)=>{
+    const per = p.dal===p.al? fmtD(p.dal) : fmtD(p.dal)+" → "+fmtD(p.al);
+    const what = p.tipo==="?" ? `<select id="impT${i}" style="margin-top:6px">${TT.map(([k,l])=>`<option value="${k}" ${k==="?"?"selected":""}>${l}</option>`).join("")}</select>`
+      : `<span class="tag ${p.tipo}">${p.tipo==="permesso"?SUB[p.sub||"altro"].l:TIPI[p.tipo]}</span> ${p.full?(p.n>1?p.n+" giorni":"giornata intera"):num(p.q)+" h"}`;
+    return `<li><input type="checkbox" data-imp="${i}" ${!p.gia&&p.tipo!=="?"?"checked":""}><div class="main"><div class="t">${per} · <span class="muted">${esc(p.s)}${p.desc?" ("+esc(p.desc.toLowerCase())+")":""}</span></div><div class="d">${what}${p.gia?' · <b>già registrata</b>':''}</div></div></li>`;
+  }).join("");
+  return `<div class="card" id="impCard"><h2>📥 Assenze trovate nel cedolino${pr.mese?" ("+fmtM(pr.mese)+")":""}</h2>
+    <p class="muted small">Seleziona quelle da registrare. Quelle già presenti sono deselezionate. Le sigle sconosciute: scegli tu il tipo.</p>
+    <ul class="list">${rows}</ul><div class="btns"><button class="btn" id="impSave" style="flex:1">Registra selezionate</button><button class="btn sec" id="impNo">Non ora</button></div></div>`;
+}
+function nettoSerie(){ return [...S.cedolini].filter(c=>c.extra&&isNum(c.extra.netto)).sort((a,b)=>a.mese<b.mese?-1:1).map(c=>({m:c.mese, v:+c.extra.netto, l:isNum(c.extra.lordo)?+c.extra.lordo:null})); }
+function nettoCard(){
+  const s=nettoSerie().slice(-12); if(!s.length) return "";
+  const W=320,H=150,pad=22, mx=Math.max(...s.map(x=>x.v))*1.1, bw=(W-pad)/s.length;
+  const avg=s.reduce((a,x)=>a+x.v,0)/s.length;
+  const bars=s.map((x,i)=>{ const h=(x.v/mx)*(H-30), low=x.v<avg*0.95; return `<rect x="${pad+i*bw+3}" y="${H-18-h}" width="${bw-6}" height="${h}" rx="4" fill="${low?'var(--pink)':'var(--mint)'}"/><text x="${pad+i*bw+bw/2}" y="${H-5}" font-size="9" text-anchor="middle" fill="var(--muted)">${MESI[+x.m.slice(5)-1].slice(0,3)}</text>`; }).join("");
+  const ya=H-18-(avg/mx)*(H-30);
+  const last=s[s.length-1];
+  return `<div class="card"><h2>📈 Netto in busta</h2>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${bars}<line x1="${pad}" x2="${W}" y1="${ya}" y2="${ya}" stroke="var(--muted)" stroke-dasharray="4 4"/><text x="2" y="${ya+3}" font-size="9" fill="var(--muted)">media</text></svg>
+    <p class="small">Ultimo (${fmtM(last.m)}): <b>${eur(last.v)}</b>${last.l?` su ${eur(last.l)} lordi`:""} · media ${eur(avg)}. ${s.length>1&&last.v<avg*0.95?"<b style='color:var(--pink)'>Più basso del solito.</b>":""}</p></div>`;
+}
 function collectCed(){
-  const c = {id: cedDraft&&cedDraft.id, mese: $("#cMese").value, ferie:{}, rol:{}, extra:{}, fonte: cedDraft&&cedDraft.fonte||"", importato: cedDraft&&cedDraft.importato};
+  const c = {id: cedDraft&&cedDraft.id, mese: $("#cMese").value, ferie:{}, rol:{}, extra:{...((cedDraft&&cedDraft.extra)||{})}, fonte: cedDraft&&cedDraft.fonte||"", importato: cedDraft&&cedDraft.importato};
+  if(cedDraft && cedDraft.pres) c.pres=cedDraft.pres;
   document.querySelectorAll("[data-g]").forEach(i=>{ const s=String(i.value).trim(); const v = s===""?NaN:toNum(s); c[i.dataset.g][i.dataset.f] = isNaN(v)?"":v; });
   return c;
 }
@@ -918,10 +1097,12 @@ function valueNear(lines, re){
   const cx=(lab.x0+lab.x1)/2, half=Math.max(18,(lab.x1-lab.x0)/2+10);
   // 1) numero subito a destra, sulla stessa riga, prima di un'altra scritta
   const right = lab.sameLine[0]; if(right && isNumStr(right.s) && right.x-lab.x1<40) return {v:toNum(right.s), i:lab.i};
-  // 2) numero sotto, allineato alla scritta
+  // 2) numero sotto: nella casella della scritta (i numeri sono spesso allineati a destra)
+  const nextX = Math.min(...lines[lab.i].items.filter(it=>it.x>lab.x1+2).map(it=>it.x), Infinity);
+  const xr = Math.min(lab.x1+48, nextX-2), xl = lab.x0-10;
   for(let k=lab.i+1;k<Math.min(lines.length,lab.i+5);k++){
     const L=lines[k]; if(lab.y-L.y>40) break;
-    const inCol = L.items.filter(it=>{ const c=it.x+it.w/2; return Math.abs(c-cx)<=half; });
+    const inCol = L.items.filter(it=>{ const c=it.x+it.w/2; return (c>=xl && c<=xr) || Math.abs(c-cx)<=half; });
     const n = inCol.filter(it=>isNumStr(it.s)).sort((a,b)=>Math.abs(a.x+a.w/2-cx)-Math.abs(b.x+b.w/2-cx))[0];
     if(n) return {v:toNum(n.s), i:k};
     if(inCol.some(it=>/[a-z]/i.test(it.s))) break; // sotto c'è già un'altra scritta: casella vuota
@@ -952,11 +1133,99 @@ function parsePayslip(lines){
     return got;
   };
   grid("ferie", res.ferie);
-  if(!grid("fest", res.rol)) grid("rol", res.rol);   // UNIRELAB: ROL in ore dalla riga FEST.
+  const usaFest = grid("fest", res.rol);
+  if(!usaFest) grid("rol", res.rol);   // UNIRELAB: ROL in ore dalla riga FEST.
+  // altri contatori (solo lettura)
+  const cont={};
+  const grid2 = (pref,key) => { const o={}; let got=0; for(const k in F){ const r=valueNear(lines, lab(pref,F[k])); if(r){ o[k]=r.v; got++; } } if(got) cont[key]=o; };
+  grid2("perm","perm"); if(usaFest) grid2("rol","rol"); grid2("fless","fless");
+  if(Object.keys(cont).length) res.extra.cont=cont;
+  // importi della busta
+  for(const [k,re] of [["netto",/netto\s+busta/i],["lordo",/totale\s+lordo/i],["trattenute",/tot\.?\s*trattenute/i]]){ const r=valueNear(lines,re); if(r && r.v>0) { res.extra[k]=r.v; res.trovati=true; } }
+  // presenze giorno per giorno (calendario del mese precedente)
+  const pr = parseDaily(lines, res.mese);
+  if(pr && pr.days.length){ res.pres=pr; const n6=pr.days.filter(x=>x.ore>=+S.settings.buonoMinOre-1e-9).length;
+    res.found += (res.found?"\n":"")+`Calendario presenze di ${fmtM(pr.mese)}: ${pr.days.filter(x=>x.ore>0).length} giorni lavorati, ${n6} con almeno ${num(S.settings.buonoMinOre)} h.`; }
   const ol = colSum(lines, /ore\s+lavorate/i);
   if(ol && ol.v>20 && ol.v<=260){ res.extra.oreLav=Math.round(ol.v*100)/100; res.trovati=true; res.found += (res.found?"\n":"")+`Ore lavorate (somma colonna giornaliera, ${ol.n} giorni): ${num(ol.v)}`; }
   if(extra.size) res.found = [...new Set([res.found, ...[...extra].sort((a,b)=>a-b).map(i=>lines[i].text)])].filter(Boolean).join("\n");
   return res;
+}
+// Calendario presenze: colonna "ore lavorate" + sigle/quantità, con legenda delle sigle
+function parseDaily(lines, meseCed){
+  const lab=findLabel(lines,/ore\s+lavorate/i); if(!lab) return null;
+  const all=[]; lines.forEach(L=>L.items.forEach(it=>all.push(it)));
+  const legend={}; const sl=findLabel(lines,/\bsigla\b\s+descrizione/i);
+  if(sl) for(let k=sl.i+1;k<Math.min(lines.length,sl.i+20);k++){
+    const t=lines[k].items.filter(it=>it.x>=sl.x0-6).map(it=>it.s).join(" ").trim();
+    const m=t.match(/^([A-Z][A-Z0-9]{0,3})\s+([A-Za-zÀ-ú'][^]{2,})$/); if(m) legend[m[1]]=m[2].trim();
+  }
+  let mese=null; const txt=lines.map(l=>l.text).join("\n");
+  const pm=txt.match(/presenze\s+mese\s*\/\s*anno:?\s*(\d{1,2})\s*\/\s*(\d{4})/i);
+  if(pm) mese=pm[2]+"-"+pad(+pm[1]); else if(meseCed) mese=addMonths(meseCed, S.settings.buoniRif==="precedente"?-1:0);
+  if(!mese) return null;
+  const nd=+lastDay(mese).slice(8);
+  const dayIt={};
+  for(const it of all){ if(it.y>=lab.y || lab.y-it.y>950) continue; if(it.x<lab.x0-18 || it.x>lab.x0+6) continue;
+    if(/^\d{1,2}$/.test(it.s)){ const d=+it.s; if(d>=1 && d<=nd && !dayIt[d]) dayIt[d]=it; } }
+  const days=[];
+  for(const d in dayIt){ const di=dayIt[d];
+    const row=all.filter(it=>Math.abs(it.y-di.y)<=7 && it.x>di.x+2 && it.x<lab.x1+260 && it!==di).sort((a,b)=>a.x-b.x);
+    let ore=0, codes=[];
+    for(let i=0;i<row.length;i++){ const it=row[i];
+      if(!ore && it.x>=lab.x0-6 && it.x<=lab.x1+12 && /^\d{1,2},\d{1,2}$/.test(it.s)){ ore=toNum(it.s); continue; }
+      if(/^[A-Z]{1,3}\d?$/.test(it.s)){ const nx=row[i+1]; let q=null; if(nx && /^\d{1,2},\d{1,2}$/.test(nx.s)){ q=toNum(nx.s); i++; } codes.push({s:it.s,q}); }
+    }
+    days.push({d:mese+"-"+pad(+d), ore, codes});
+  }
+  days.sort((a,b)=>a.d<b.d?-1:1);
+  return {mese, days, legend};
+}
+// Da sigla del cedolino a tipo di assenza dell'app
+function mapSigla(code, desc){
+  const d=(desc||"").toLowerCase();
+  if(/ex\s*fest|r\.?o\.?l\b|riduz/.test(d)) return {tipo:"rol"};
+  if(/riposo|festiv[oi]\b|domenic|sabato|recupero\s+festiv/.test(d)) return null;
+  if(/ferie/.test(d)) return {tipo:"ferie"};
+  if(/malatt|infortun/.test(d)) return {tipo:"malattia"};
+  const P=[[/matrimon/,"matrimoniale"],[/matern/,"maternita"],[/patern/,"paternita"],[/parental/,"parentale"],[/lutto|decesso/,"lutto"],[/sciopero/,"sciopero"],[/104|handicap|disabil/,"l104"],[/studio|esam/,"studio"],[/visit|medic/,"visita"],[/permess|assenza/,"altro"]];
+  for(const [re,sub] of P) if(re.test(d)) return {tipo:"permesso", sub};
+  const C={FE:{tipo:"ferie"},MA:{tipo:"malattia"},ML:{tipo:"malattia"},EO:{tipo:"rol"},EF:{tipo:"rol"},RL:{tipo:"rol"},R:null,F:null};
+  if(code in C) return C[code];
+  return {tipo:"?"};
+}
+// Proposte di assenze da registrare
+function presenzeProposte(pr){
+  const out=[], {days}=expand();
+  const has=(d,tipo,sub)=>days.some(x=>x.d===d && x.tipo===tipo && (!sub||x.sub===sub));
+  for(const g of pr.days) for(const c of g.codes){
+    const m=mapSigla(c.s, pr.legend[c.s]); if(m===null) continue;
+    const full = c.q===null || c.q>=OG()-0.05;
+    out.push({d:g.d, s:c.s, desc:pr.legend[c.s]||"", q:c.q, tipo:m.tipo, sub:m.sub||null, full, gia: m.tipo!=="?" && has(g.d,m.tipo,m.sub)});
+  }
+  // unisce i giorni interi consecutivi dello stesso tipo
+  const merged=[];
+  for(const p of out){
+    const last=merged[merged.length-1];
+    if(last && p.full && last.full && p.tipo===last.tipo && p.sub===last.sub && p.s===last.s && p.gia===last.gia){
+      let gap=true; eachDay(ymd(new Date(parseD(last.al).getTime()+86400000)), ymd(new Date(parseD(p.d).getTime()-86400000)), x=>{ if(isWorkday(x)) gap=false; });
+      if(parseD(p.d)>parseD(last.al) && gap){ last.al=p.d; last.n++; continue; }
+    }
+    merged.push({...p, dal:p.d, al:p.d, n:1});
+  }
+  return merged;
+}
+function proposteToAssenze(list){
+  const st=S.settings, added=[];
+  for(const p of list){
+    if(p.tipo==="?") continue;
+    const a={id:uid(), tipo:p.tipo, dal:p.dal, al:p.al, nota:"Dal cedolino ("+p.s+")", fonte:"cedolino"};
+    if(p.tipo==="ferie" && !p.full){ a.mezza=true; a.al=a.dal; }
+    if(p.tipo==="rol"||p.tipo==="permesso"){ if(p.full) a.giornate=true; else { a.ore=p.q; a.al=a.dal; } }
+    if(p.tipo==="permesso") a.sub=p.sub||"altro";
+    S.assenze.push(a); added.push(a);
+  }
+  return added;
 }
 function parsePayslipText(lines){
   const res={ferie:{},rol:{},extra:{},mese:null,found:"",trovati:false};
@@ -994,18 +1263,44 @@ function vAno(){
   const list = S.anomalie.filter(a=>anoFilter==="tutte"||a.stato===anoFilter).sort((a,b)=>a.mese<b.mese?1:a.mese>b.mese?-1:0);
   const val = (v,u)=> !isNum(v) ? "—" : u==="€" ? eur(v) : num(v)+" "+u;
   const lab = {aperta:"Aperte",segnalata:"Segnalate",risolta:"Risolte",tutte:"Tutte"};
-  return `<div class="seg" style="margin-bottom:12px" id="segAno">${["aperta","segnalata","risolta","tutte"].map(s=>`<button data-s="${s}" class="${anoFilter===s?'on':''}">${lab[s]} ${cnt(s)}</button>`).join("")}</div>
+  const nAp = S.anomalie.filter(a=>a.stato==="aperta").length;
+  return `${nAp>1?`<button class="btn full" style="margin:0 0 12px" id="mailAll">✉️ Una mail per tutte le ${nAp} anomalie aperte</button>`:""}<div class="seg" style="margin-bottom:12px" id="segAno">${["aperta","segnalata","risolta","tutte"].map(s=>`<button data-s="${s}" class="${anoFilter===s?'on':''}">${lab[s]} ${cnt(s)}</button>`).join("")}</div>
   ${list.length?list.map(a=>`<div class="card">
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="muted small">${fmtM(a.mese)}</div><div style="font-weight:750">${esc(a.titolo)}</div></div><span class="tag ${a.stato}">${a.stato}</span></div>
     ${a.atteso!==null||a.trovato!==null?`<div class="row" style="margin-top:8px"><div><div class="muted small">Atteso</div><b>${val(a.atteso,a.unita)}</b></div><div><div class="muted small">Nel cedolino</div><b>${val(a.trovato,a.unita)}</b></div><div><div class="muted small">Differenza</div><b>${isNum(a.atteso)&&isNum(a.trovato)?(a.trovato-a.atteso>0?"+":"")+val(a.trovato-a.atteso,a.unita):"—"}</b></div></div>`:""}
     <p class="muted small">${esc(a.spieg)}</p>
     ${a.nota?`<p class="small"><b>Nota:</b> ${esc(a.nota)}</p>`:""}
     <details><summary>Storico (${a.storia.length})</summary><ul class="list small">${a.storia.map(h=>`<li><div class="main">${new Date(h.t).toLocaleDateString("it-IT")} · <b>${h.s}</b> · ${esc(h.n)}</div></li>`).join("")}</ul></details>
-    <div class="btns">${a.stato!=="segnalata"?`<button class="btn sm sec" data-as="${a.id}|segnalata">📨 Segnalata</button>`:""}${a.stato!=="risolta"?`<button class="btn sm sec" data-as="${a.id}|risolta">✅ Risolta</button>`:""}${a.stato!=="ignorata"?`<button class="btn sm sec" data-as="${a.id}|ignorata">🙈 Ignora</button>`:""}${a.stato!=="aperta"?`<button class="btn sm sec" data-as="${a.id}|aperta">↩️ Riapri</button>`:""}<button class="btn sm sec" data-an="${a.id}">✏️ Nota</button></div>
+    <div class="btns">${a.stato!=="segnalata"?`<button class="btn sm sec" data-as="${a.id}|segnalata">📨 Segnalata</button>`:""}${a.stato!=="risolta"?`<button class="btn sm sec" data-as="${a.id}|risolta">✅ Risolta</button>`:""}${a.stato!=="ignorata"?`<button class="btn sm sec" data-as="${a.id}|ignorata">🙈 Ignora</button>`:""}${a.stato!=="aperta"?`<button class="btn sm sec" data-as="${a.id}|aperta">↩️ Riapri</button>`:""}<button class="btn sm sec" data-an="${a.id}">✏️ Nota</button><button class="btn sm sec" data-mail="${a.id}">✉️ Mail</button></div>
   </div>`).join(""):`<div class="card empty"><span class="big">${anoFilter==="aperta"?frase("noAno")[1]:"📭"}</span>${anoFilter==="aperta"?frase("noAno")[0]:"Nessuna anomalia in questa categoria."}</div>`}
   <p class="muted small" style="padding:0 4px">Le anomalie vengono ricontrollate ogni volta che modifichi cedolini e assenze. Se i dati vengono corretti, passano a "risolta" da sole, ma restano nello storico.</p>`;
 }
+function mailTesto(list){
+  const st=S.settings, val=(v,u)=>!isNum(v)?"—":u==="€"?eur(v):num(v)+" "+u;
+  const mesi=[...new Set(list.map(a=>a.mese))].sort();
+  const sogg = list.length===1 ? `Verifica cedolino ${fmtM(list[0].mese)} – ${list[0].titolo}` : `Verifica cedolini (${mesi.map(fmtM).join(", ")})`;
+  const punti = list.map(a=>{ let r=`- ${fmtM(a.mese)}: ${a.titolo.toLowerCase()}.`; if(isNum(a.atteso)||isNum(a.trovato)) r+=` Secondo i miei conteggi: ${val(a.atteso,a.unita)}; sul cedolino: ${val(a.trovato,a.unita)}${isNum(a.atteso)&&isNum(a.trovato)?` (differenza ${(a.trovato-a.atteso>0?"+":"")+val(a.trovato-a.atteso,a.unita)})`:""}.`; return r; }).join("\n");
+  const corpo = `Buongiorno,\n\ncontrollando ${list.length===1?"il cedolino":"i cedolini"} ho notato ${list.length===1?"questa differenza":"queste differenze"}:\n\n${punti}\n\nPotreste verificare e, se necessario, correggere? Resto a disposizione per qualsiasi chiarimento.\n\nGrazie e buona giornata,\n${st.mioNome||""}`;
+  return {sogg, corpo};
+}
+function apriMail(list){
+  const {sogg,corpo}=mailTesto(list), st=S.settings;
+  sheet(`<h2 style="margin:0 0 8px">✉️ Mail per l'ufficio paghe</h2>
+    <label>A</label><input id="mlTo" value="${esc(st.mailPaghe)}" placeholder="indirizzo dell'ufficio paghe" inputmode="email">
+    <label>Oggetto</label><input id="mlSub" value="${esc(sogg)}">
+    <label>Testo</label><textarea id="mlBody">${esc(corpo)}</textarea>
+    <p class="muted small">Il testo è sempre serio, qualunque personalità tu abbia scelto. Puoi modificarlo prima di inviarlo.</p>
+    <div class="btns"><button class="btn" id="mlOpen" style="flex:1">Apri app mail</button><button class="btn sec" id="mlCopy">Copia testo</button><button class="btn sec" id="mlClose">Chiudi</button></div>`, close=>{
+    const dopo = async ()=>{ close(); if(list.some(a=>a.stato!=="segnalata") && await ask("Segnare "+(list.length===1?"l'anomalia":"le anomalie")+" come segnalat"+(list.length===1?"a":"e")+"?")){ const t=new Date().toISOString(); for(const a of list){ a.stato="segnalata"; a.auto=false; a.storia.push({t,s:"segnalata",n:"Mail all'ufficio paghe"}); } save(); render(); } };
+    $("#mlClose").onclick=close;
+    $("#mlCopy").onclick=async()=>{ const ok=await copia($("#mlSub").value+"\n\n"+$("#mlBody").value); toast(ok?"Testo copiato":"Copia non riuscita", ok?"📋":"🚫"); if(ok) dopo(); };
+    $("#mlOpen").onclick=()=>{ const to=$("#mlTo").value.trim(); if(to && to!==st.mailPaghe){ st.mailPaghe=to; save(); }
+      location.href=`mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent($("#mlSub").value)}&body=${encodeURIComponent($("#mlBody").value)}`; setTimeout(dopo,800); };
+  });
+}
 bind.ano = () => {
+  document.querySelectorAll("[data-mail]").forEach(b=>b.onclick=()=>apriMail([S.anomalie.find(x=>x.id===b.dataset.mail)]));
+  if($("#mailAll")) $("#mailAll").onclick=()=>apriMail(S.anomalie.filter(a=>a.stato==="aperta").sort((a,b)=>a.mese<b.mese?-1:1));
   document.querySelectorAll("#segAno button").forEach(b=>b.onclick=()=>{anoFilter=b.dataset.s; render();});
   document.querySelectorAll("[data-as]").forEach(b=>b.onclick=async()=>{ const [id,s]=b.dataset.as.split("|"); const a=S.anomalie.find(x=>x.id===id); const n=await askText("Nota (facoltativa):",""); if(n===null) return; a.stato=s; a.auto=false; a.storia.push({t:new Date().toISOString(), s, n:n||"Cambio stato manuale"}); if(n) a.nota=n; save(); render(); toast(s==="segnalata"?"Segnalata. Ora si aspetta (molto?)":"Aggiornata", s==="segnalata"?"⏳":"👍"); });
   document.querySelectorAll("[data-an]").forEach(b=>b.onclick=async()=>{ const a=S.anomalie.find(x=>x.id===b.dataset.an); const n=await askText("Nota:", a.nota||""); if(n===null) return; a.nota=n; a.storia.push({t:new Date().toISOString(), s:a.stato, n:"Nota: "+n}); save(); render(); });
@@ -1034,6 +1329,7 @@ function vSet(){
     <div class="row">${inp("sCL","Comporto malattia (gg, 0 = no)",st.comportoLimite)}${inp("sCM","Periodo comporto (mesi)",st.comportoMesi)}</div>
     ${inp("sRS","Scadenza ROL: mesi dopo fine anno (0 = nessuna)",st.rolScadenzaMesi)}
     <div class="row">${inp("sVO","Visite mediche all'anno (ore)",st.visiteOre)}${inp("sMG","Congedo matrimoniale (giorni)",st.matrimonialeGg)}</div>
+    <div class="row"><div><label>Il tuo nome (per le mail)</label><input id="sNome" value="${esc(st.mioNome)}"></div><div><label>Mail ufficio paghe</label><input id="sMail" inputmode="email" value="${esc(st.mailPaghe)}"></div></div>
     <p class="muted small">CCNL Sanità privata AIOP-ARIS (non medici): l'azienda può recedere oltre 540 giorni di malattia in un quadriennio mobile (48 mesi). La scadenza dei ROL va verificata con l'ufficio personale.</p></div>
   <div class="card"><h2>🍝 Buoni pasto</h2>
     <div class="row">${inp("sBV","Valore buono (€)",st.buonoValore)}${inp("sBM","Presenza minima (ore)",st.buonoMinOre)}</div>
@@ -1068,7 +1364,7 @@ bind.set = () => {
   $("#sSave").onclick = () => {
     const st=S.settings;
     Object.assign(st,{startMode:$("#sSM").value, startMese:$("#sSMe").value, startFerieCed:n("#sSF"), startRolCed:n("#sSR"), ferieMeseCal:n("#sFM")||2.5, divisore:n("#sDV")||1.2, rolMese:n("#sRM"), oreGiorno:n("#sOG")||7.2,
-      santoPatrono:$("#sSP").value.trim(), meseAssunzione:$("#sMA").value, comportoLimite:n("#sCL"), comportoMesi:n("#sCM")||36, rolScadenzaMesi:n("#sRS"), visiteOre:n("#sVO"), matrimonialeGg:n("#sMG"),
+      santoPatrono:$("#sSP").value.trim(), meseAssunzione:$("#sMA").value, comportoLimite:n("#sCL"), comportoMesi:n("#sCM")||36, rolScadenzaMesi:n("#sRS"), visiteOre:n("#sVO"), matrimonialeGg:n("#sMG"), mioNome:$("#sNome").value.trim(), mailPaghe:$("#sMail").value.trim(),
       buonoValore:n("#sBV"), buonoMinOre:n("#sBM"), buoniSaldoIniz:n("#sBS"), buoniRif:$("#sBR").value, permessiBuono:$("#sPB").checked,
       bonusImporto:n("#sPI"), bonusDetr:n("#sPD"), bonusPeriodo:$("#sPP").value, bonusGiorni:$("#sPG").value,
       unitaFerieCed:$("#sUF").value, unitaRolCed:$("#sUR").value, modoMaturato:$("#sMM").value, godutoRif:$("#sGR").value, tollGiorni:n("#sTG"), tollOre:n("#sTO"), tollOreLav:n("#sTL"),
@@ -1076,10 +1372,10 @@ bind.set = () => {
     for(const k in holCache) delete holCache[k];
     recheck(); quip("set"); go("home");
   };
-  $("#bExp").onclick = () => download("rollercoaster-backup-"+todayS()+".json", JSON.stringify(S,null,1), "application/json");
+  $("#bExp").onclick = () => { S.settings.lastBackup=new Date().toISOString(); save(); download("rollercoaster-backup-"+todayS()+".json", JSON.stringify(S,null,1), "application/json"); };
   $("#bImp").onclick = () => $("#fileBackup").click();
   $("#bCsv").onclick = exportCsv;
-  $("#bCopy").onclick = async () => { try{ await navigator.clipboard.writeText(JSON.stringify(S)); toast("Backup copiato: incollalo in una nota o in una mail a te stessa","📋"); }catch(e){ toast("Copia non consentita su questo dispositivo","🚫"); } };
+  $("#bCopy").onclick = async () => { try{ await navigator.clipboard.writeText(JSON.stringify(S)); S.settings.lastBackup=new Date().toISOString(); save(); toast("Backup copiato: incollalo in una nota o in una mail a te stessa","📋"); }catch(e){ toast("Copia non consentita su questo dispositivo","🚫"); } };
   $("#bReset").onclick = async () => { if(!await ask("Cancellare TUTTI i dati? Fai prima un backup.")) return; if(!await ask("Sicura sicura? Non si torna indietro.")) return; S={settings:{...DEF_SETTINGS,cfg3:true,cfg4:true,cfg5:true,cfg6:true,cfg7:true,cfg8:true,cfg9:true},assenze:[],cedolini:[],anomalie:[],buoniSpesi:[]}; invalidate(); save(); go("home"); };
 };
 $("#fileBackup").onchange = async e => {
