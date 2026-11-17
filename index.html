@@ -196,7 +196,8 @@ const e=!("object"!=typeof process||process+""!="[object process]"||process.vers
 /* ================== STATO E PERSISTENZA ================== */
 const KEY = "ferie-rol-v1";
 const DEF_SETTINGS = {
-  meseInizio: "", resInFerie: 0, resInRol: 0,
+  meseInizio: "", resInFerie: 0, resInRol: 0,   // derivati dal punto di partenza (applyAnchor)
+  startMode: "auto", startMese: "", startFerieCed: 0, startRolCed: 0,
   ferieMeseCal: 2.5, divisore: 1.2, rolMese: 2.4, oreGiorno: 7.2,
   unitaFerieCed: "gg6", unitaRolCed: "ore", modoMaturato: "progressivo", godutoRif: "precedente",
   meseAssunzione: "", santoPatrono: "",
@@ -207,7 +208,7 @@ const DEF_SETTINGS = {
   // bonus presenze
   bonusImporto: 450, bonusDetr: 15, bonusPeriodo: "lug-giu", bonusGiorni: "calendario",
   // varie
-  tono: true, pdfPassword: ""
+  personalita: "sarcastica", pdfPassword: "", visiteOre: 14, matrimonialeGg: 15
 };
 let S = load();
 function load(){
@@ -217,6 +218,11 @@ function load(){
   const st = Object.assign({}, DEF_SETTINGS, d.settings||{});
   if(!st.cfg3){ Object.assign(st, {bonusImporto:450, bonusPeriodo:"lug-giu", bonusGiorni:"calendario", cfg3:true}); } // regole bonus confermate
   if(!st.cfg4){ Object.assign(st, {buoniRif:"precedente", cfg4:true}); } // buoni e presenze del mese precedente
+  if(!st.cfg9){ st.personalita = (d.settings && d.settings.tono===false) ? "seria" : (st.personalita||"sarcastica"); st.cfg9=true; }
+  if(!st.cfg8){ // nuovo punto di partenza: dal primo cedolino caricato
+    if((d.cedolini||[]).length) st.startMode="auto";
+    else if(st.meseInizio){ st.startMode="manuale"; { let [y,m]=st.meseInizio.split("-").map(Number); m--; if(m<1){m=12;y--;} st.startMese=y+"-"+String(m).padStart(2,"0"); } st.startFerieCed=(+st.resInFerie||0)*(st.unitaFerieCed==="gg6"?(+st.divisore||1.2):1); st.startRolCed=+st.resInRol||0; }
+    st.cfg8=true; }
   if(!st.cfg7){ st.godutoRif="precedente"; st.cfg7=true; } // ferie/ROL usati scalati nel cedolino del mese dopo
   if(!st.cfg6){ if(!+st.comportoLimite){ st.comportoLimite=540; st.comportoMesi=48; } st.cfg6=true; } // CCNL AIOP-ARIS non medici: 540 gg in 4 anni mobili
   if(!st.cfg5){ if(+st.oreGiorno===8) st.oreGiorno=7.2; Object.assign(st, {modoMaturato:"progressivo", unitaFerieCed:"gg6", unitaRolCed:"ore", cfg5:true}); } // formato cedolino UNIRELAB
@@ -226,31 +232,74 @@ function load(){
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){ toast("Impossibile salvare: fai un backup.","⚠️"); } }
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
-/* ================== FRASI ================== */
-const Q = {
-  cedOk: [["Anche questo mese puoi mangiare.","🍝"],["Cedolino in ordine. Sospetto, ma ok.","🧐"],["Tutto torna. Segnatelo sul calendario, non ricapita spesso.","📅"],["Nessuna anomalia. L'ufficio paghe oggi era in forma.","💅"],["Conti giusti al centesimo. Quasi commovente.","🥹"]],
-  cedKo: [["{n} anomali{a}. L'ufficio paghe ha fatto i conti con le dita?","🧮"],["Houston, abbiamo un cedolino: {n} anomali{a}.","🚀"],["{n} cos{e} non torna{no}. Prepara il caffè e la mail per l'ufficio personale.","☕"],["{n} anomali{a}. Fidarsi è bene, controllare è meglio.","🔍"]],
-  ferie: [["Ferie registrate. La scrivania sentirà la tua mancanza (forse).","🏖️"],["Ottimo, il divano ti aspetta.","🛋️"],["Ferie salvate. Fuori ufficio attivato mentalmente.","🌴"]],
-  rol: [["ROL registrato. Ogni ora sottratta alla scrivania è una piccola vittoria.","⏱️"],["Ore di libertà registrate.","🕊️"]],
-  rolNoBuono: [["Permesso salvato. Però così scendi sotto le {m} ore: niente buono pasto quel giorno.","🥲"]],
-  permesso: [["Permesso registrato.","📝"]],
-  malattia: [["Rimettiti presto! Il bonus presenze intanto perde {d} € al giorno.","🤧"],["Brodo caldo e copertina. Il bonus presenze ringrazia meno.","🍲"],["Malattia registrata. Riposati, i cedolini aspettano.","🛌"]],
-  buono: [["Buon appetito!","🍕"],["Pranzo registrato. La dieta ricomincia lunedì.","🥗"],["Buono speso, stomaco felice.","😋"]],
-  set: [["Impostazioni salvate.","✅"]],
-  noAno: ["Nessuna anomalia aperta. L'ufficio paghe ti ha graziato.","😇"],
-  bonus0: "Per il bonus presenze ritenta il prossimo anno.",
-  bonusLow: "Bonus presenze agli sgoccioli: niente starnuti fino alla fine del periodo.",
-  bonusFull: "Bonus presenze intatto: sei una roccia.",
-  bonusMid: "Il bonus presenze ha qualche acciacco, ma resiste.",
-  troppeFerie: "Hai più ferie che pazienza: usale!"
+/* ================== FRASI (personalità) ================== */
+const PERS = {
+ seria: {
+  cedOk:[["Cedolino salvato: nessuna anomalia.","✅"]], cedKo:[["Cedolino salvato: {n} anomali{a} da verificare.","⚠️"]],
+  ferie:[["Ferie registrate.","✅"]], rol:[["ROL registrato.","✅"]], rolNoBuono:[["Permesso salvato. Sotto le {m} ore: niente buono pasto quel giorno.","ℹ️"]],
+  permesso:[["Permesso registrato.","✅"]], malattia:[["Malattia registrata.","✅"]], buono:[["Buono registrato.","✅"]], set:[["Impostazioni salvate.","✅"]],
+  matrimoniale:[["Congedo matrimoniale registrato. Auguri!","💍"]], maternita:[["Congedo registrato. Auguri!","💕"]], lutto:[["Congedo registrato. Condoglianze.","🕊️"]],
+  sciopero:[["Sciopero registrato.","✅"]], visita:[["Visita registrata. Restano {r} h di visite mediche quest'anno.","🩺"]],
+  noAno:["Nessuna anomalia aperta.","✅"], bonus0:"", bonusLow:"", bonusFull:"", bonusMid:"", troppeFerie:"", hello:["Modalità seria attivata.","🧐"]
+ },
+ sarcastica: {
+  cedOk:[["Anche questo mese puoi mangiare.","🍝"],["Cedolino in ordine. Sospetto, ma ok.","🧐"],["Tutto torna. Segnatelo sul calendario, non ricapita spesso.","📅"],["Nessuna anomalia. L'ufficio paghe oggi era in forma.","💅"],["Conti giusti al centesimo. Quasi commovente.","🥹"]],
+  cedKo:[["{n} anomali{a}. L'ufficio paghe ha fatto i conti con le dita?","🧮"],["Houston, abbiamo un cedolino: {n} anomali{a}.","🚀"],["{n} cos{e} non torna{no}. Prepara il caffè e la mail per l'ufficio personale.","☕"],["{n} anomali{a}. Fidarsi è bene, controllare è meglio.","🔍"]],
+  ferie:[["Ferie registrate. La scrivania sentirà la tua mancanza (forse).","🏖️"],["Ottimo, il divano ti aspetta.","🛋️"],["Ferie salvate. Fuori ufficio attivato mentalmente.","🌴"]],
+  rol:[["ROL registrato. Ogni ora sottratta alla scrivania è una piccola vittoria.","⏱️"],["Ore di libertà registrate.","🕊️"]],
+  rolNoBuono:[["Permesso salvato. Però così scendi sotto le {m} ore: niente buono pasto quel giorno.","🥲"]],
+  permesso:[["Permesso registrato.","📝"]],
+  malattia:[["Rimettiti presto! Il bonus presenze intanto perde {d} € al giorno.","🤧"],["Brodo caldo e copertina. Il bonus presenze ringrazia meno.","🍲"],["Malattia registrata. Riposati, i cedolini aspettano.","🛌"]],
+  buono:[["Buon appetito!","🍕"],["Pranzo registrato. La dieta ricomincia lunedì.","🥗"],["Buono speso, stomaco felice.","😋"]],
+  set:[["Impostazioni salvate.","✅"]],
+  matrimoniale:[["Auguri! Il congedo matrimoniale non scala le ferie. Il matrimonio, invece, scala tutto il resto.","💍"],["Congedo matrimoniale registrato. Viva gli sposi (e i giorni pagati).","🥂"]],
+  maternita:[["Auguri! Il cedolino lo controllo io, tu dormi quando puoi.","🍼"]],
+  lutto:[["Condoglianze. Il congedo è registrato, al resto ci penso io.","🕊️"]],
+  sciopero:[["Sciopero registrato. Lotta dura, busta leggera.","✊"]],
+  visita:[["Visita registrata. Restano {r} h di visite mediche quest'anno: usale con giudizio.","🩺"]],
+  noAno:["Nessuna anomalia aperta. L'ufficio paghe ti ha graziato.","😇"],
+  bonus0:"Per il bonus presenze ritenta il prossimo anno. 🍀", bonusLow:"Bonus presenze agli sgoccioli: niente starnuti fino alla fine del periodo. 🤞",
+  bonusFull:"Bonus presenze intatto: sei una roccia. 💪", bonusMid:"Il bonus presenze ha qualche acciacco, ma resiste. 🩹",
+  troppeFerie:"Hai più ferie che pazienza: usale! 🏝️", hello:["Sarcasmo attivato. Ti avevo avvisata.","😏"]
+ },
+ cattiva: {
+  cedOk:[["Tutto giusto. Stavolta all'ufficio paghe è andata bene.","😒"],["Nessun errore. Devono aver cambiato persona.","🤨"],["Conti giusti. Non abituarti.","🙄"],["Cedolino perfetto. Mi annoio.","🥱"]],
+  cedKo:[["{n} error{i}. Qualcuno all'ufficio paghe stanotte dorme male.","😈"],["Ti stanno fregando: {n} anomali{a}. Vai a riprenderti il maltolto.","🗡️"],["{n} anomali{a}. Scaldiamo la tastiera per una mail passivo-aggressiva.","⌨️"],["{n} cos{e} non torna{no}. Dilettanti.","🤌"]],
+  ferie:[["Ferie segnate. Tanto lì dentro nessuno se ne accorgerà.","🏖️"],["Vai, scappa. L'azienda sopravviverà, purtroppo.","🏃‍♀️"],["Ferie registrate. Spegni il telefono e lasciali bollire.","🔥"]],
+  rol:[["ROL registrato. Un'ora in meno di gente che ti chiede cose.","😌"],["Ore rubate al capitale. Brava.","🦹‍♀️"]],
+  rolNoBuono:[["Con questo permesso scendi sotto le {m} ore: niente buono. Il pranzo te lo paghi tu.","💸"]],
+  permesso:[["Permesso registrato. Sparisci.","💨"]],
+  malattia:[["Malata, eh? Il bonus presenze ti saluta: −{d} € al giorno.","🤒"],["Riposati. Il bonus presenze no, quello piange.","😭"],["Malattia registrata. Per una volta l'azienda fa a meno di te.","🛌"]],
+  buono:[["10 euro di pranzo. Il vero stipendio.","🍕"],["Buono bruciato. Ne valeva la pena?","🤔"],["Mangia, che il cedolino non ti sfama.","🥪"]],
+  set:[["Impostazioni salvate. Speriamo tu sappia cosa stai facendo.","🙃"]],
+  matrimoniale:[["15 giorni di congedo per sposarti. Per pentirtene ne servono di più.","💍"],["Congedo matrimoniale registrato. Auguri… soprattutto all'altra metà.","😈"]],
+  maternita:[["Auguri! Il cedolino lo controllo io, tu dormi quando puoi.","🍼"]],
+  lutto:[["Condoglianze. Il congedo è registrato, al resto ci penso io.","🕊️"]],
+  sciopero:[["Sciopero registrato. La busta paga sciopera con te.","✊"],["Sciopero! Che tremino.","🔥"]],
+  visita:[["Visita registrata. Restano {r} h: ammalati con parsimonia.","🩺"]],
+  noAno:["Zero anomalie. Che noia mortale.","🥱"],
+  bonus0:"Bonus presenze: zero. Ritenta il prossimo anno, magari con un sistema immunitario nuovo. 💀",
+  bonusLow:"Del bonus presenze restano le briciole. Vietato starnutire. 😤",
+  bonusFull:"Bonus presenze intatto. Sei sicura di essere umana? 🤖", bonusMid:"Il bonus presenze perde pezzi. Come la tua salute. 🩹",
+  troppeFerie:"Hai più ferie che vita sociale. Usale, prima che te le rubino. 🏝️", hello:["Modalità cattiva attivata. Nessuno è al sicuro.","😈"]
+ }
 };
-const NEUTRO = { cedOk:["Cedolino salvato: nessuna anomalia.","✅"], cedKo:["Cedolino salvato: {n} anomali{a}.","⚠️"], ferie:["Ferie registrate.","✅"], rol:["ROL registrato.","✅"], rolNoBuono:["Permesso salvato. Sotto le {m} ore: niente buono pasto quel giorno.","ℹ️"], permesso:["Permesso registrato.","✅"], malattia:["Malattia registrata.","✅"], buono:["Buono registrato.","✅"], set:["Impostazioni salvate.","✅"] };
+const persona = () => PERS[S.settings.personalita] || PERS.sarcastica;
+const frase = k => (persona()[k] !== undefined && persona()[k] !== "" ? persona()[k] : (PERS.seria[k]||""));
 function quip(k, v={}){
-  let q = S.settings.tono ? Q[k] : NEUTRO[k]; if(Array.isArray(q[0])) q = q[Math.floor(Math.random()*q.length)];
+  let q = frase(k) || PERS.seria.permesso; if(Array.isArray(q[0])) q = q[Math.floor(Math.random()*q.length)];
   let [t,e] = q; const n=v.n;
-  t = t.replace(/\{(\w+)\}/g,(_,x)=> x==="a"?(n===1?"a":"e"): x==="e"?(n===1?"a":"e"): x==="no"?(n===1?"":"no"): (v[x]??""));
+  t = t.replace(/\{(\w+)\}/g,(_,x)=> x==="a"?(n===1?"a":"e"): x==="e"?(n===1?"a":"e"): x==="i"?(n===1?"e":"i"): x==="no"?(n===1?"":"no"): (v[x]??""));
   toast(t,e);
 }
+
+/* ================== PERMESSI E CONGEDI ================== */
+const SUB = {
+  visita:{l:"🩺 Visita medica", ore:true}, matrimoniale:{l:"💍 Congedo matrimoniale", cal:true}, maternita:{l:"🤰 Maternità", cal:true},
+  paternita:{l:"👶 Paternità"}, parentale:{l:"🍼 Congedo parentale"}, lutto:{l:"🖤 Lutto"}, sciopero:{l:"✊ Sciopero", ore:true},
+  l104:{l:"♿ Legge 104", ore:true}, studio:{l:"📚 Studio"}, altro:{l:"📝 Altro permesso", ore:true}
+};
+const subOf = a => SUB[a.sub] ? a.sub : "altro";
 
 /* ================== DATE ================== */
 const pad = n => String(n).padStart(2,"0");
@@ -294,7 +343,7 @@ function expand(){
   for(const a of S.assenze) if(a.tipo==="malattia") eachDay(a.dal, a.al, d=>malSet.add(d));
   for(const a of S.assenze){
     if(a.tipo==="malattia"){ eachDay(a.dal,a.al,d=>days.push({d,tipo:"malattia",gg:1,ore:0,assH:isWorkday(d)?OG():0,id:a.id})); continue; }
-    const push = (d, gg, ore, assH) => { if(malSet.has(d)){ overlaps.push({a,d}); return; } days.push({d,tipo:a.tipo,gg,ore,assH,id:a.id}); };
+    const push = (d, gg, ore, assH) => { if(malSet.has(d)){ overlaps.push({a,d}); return; } days.push({d,tipo:a.tipo,sub:a.tipo==="permesso"?subOf(a):null,gg,ore,assH,id:a.id}); };
     if(a.tipo==="ferie"){
       if(a.mezza){ if(isWorkday(a.dal)) push(a.dal,.5,0,OG()/2); }
       else eachDay(a.dal,a.al,d=>{ if(isWorkday(d)) push(d,1,0,OG()); });
@@ -317,7 +366,7 @@ function monthStats(m, fino){
   const k=m+"|"+(fino||""); if(_ms[k]) return _ms[k];
   const {days}=expand(), st=S.settings, ass={};
   const assB={};
-  for(const x of days) if(ym(x.d)===m){ ass[x.d]=(ass[x.d]||0)+x.assH; if(!(st.permessiBuono && (x.tipo==="rol"||x.tipo==="permesso"))) assB[x.d]=(assB[x.d]||0)+x.assH; }
+  for(const x of days) if(ym(x.d)===m){ ass[x.d]=(ass[x.d]||0)+x.assH; if(!(st.permessiBuono && (x.tipo==="rol"||x.sub==="visita"))) assB[x.d]=(assB[x.d]||0)+x.assH; }
   let gl=0, ore=0, buoni=0, persi=[];
   const end = fino && fino<lastDay(m) ? fino : lastDay(m);
   if(end>=m+"-01") eachDay(m+"-01", end, d=>{
@@ -475,7 +524,24 @@ function computeIssues(){
   }
   return out;
 }
+function applyAnchor(){
+  const st=S.settings; let A=null;
+  const fk = st.unitaFerieCed==="gg6" ? 1/st.divisore : st.unitaFerieCed==="ore" ? 1/OG() : 1;
+  const rk = st.unitaRolCed==="gg" ? OG() : 1;
+  if(st.startMode==="manuale" && st.startMese) A={mese:st.startMese, f:+st.startFerieCed||0, r:+st.startRolCed||0, oldF:0, oldR:0};
+  else {
+    const c=[...S.cedolini].filter(c=>isNum(c.ferie&&c.ferie.res)||isNum(c.rol&&c.rol.res)).sort((a,b)=>a.mese<b.mese?-1:1)[0];
+    if(c){ const v=(o,k)=>isNum(o&&o[k])?+o[k]:0;
+      // parte del residuo che viene dagli anni precedenti (serve per le scadenze)
+      const oF = st.modoMaturato==="progressivo" ? Math.max(0, v(c.ferie,"resAP")-v(c.ferie,"god")) : 0;
+      const oR = st.modoMaturato==="progressivo" ? Math.max(0, v(c.rol,"resAP")-v(c.rol,"god")) : 0;
+      A={mese:c.mese, f:v(c.ferie,"res"), r:v(c.rol,"res"), oldF:Math.min(oF,v(c.ferie,"res")), oldR:Math.min(oR,v(c.rol,"res")), auto:true}; }
+  }
+  if(A){ st.meseInizio=addMonths(A.mese,1); st.resInFerie=A.f*fk; st.resInRol=A.r*rk; A.oldF*=fk; A.oldR*=rk; st._anchor=A; }
+  else { st.meseInizio=""; st._anchor=null; }
+}
 function recheck(){
+  applyAnchor();
   invalidate();
   const now = new Date().toISOString();
   const found = computeIssues(); const keys = new Set(found.map(f=>f.key));
@@ -503,8 +569,8 @@ function liveAlerts(L){
   if(!L) return al;
   const og = {}; for(const o of L.overlaps) (og[o.a.id]=og[o.a.id]||{a:o.a,d:[]}).d.push(o.d);
   for(const g of Object.values(og)) al.push({k:"bad", t:`Malattia ${g.d.length>1?"dal "+fmtD(g.d[0])+" al "+fmtD(g.d[g.d.length-1])+` (${g.d.length} giorni lavorativi)`:"il "+fmtD(g.d[0])} durante ${g.a.tipo==="ferie"?"le ferie":"un permesso"}: quei giorni non vanno scalati. Se il cedolino li conteggia, segnalalo.`});
-  const y0 = +st.meseInizio.slice(0,4)-1;
-  const lotsF=[{anno:y0,qty:+st.resInFerie||0}], lotsR=[{anno:y0,qty:+st.resInRol||0}];
+  const A = st._anchor||{}, ya = +String(A.mese||st.meseInizio).slice(0,4);
+  const lotsF=[{anno:ya-1,qty:A.oldF||0},{anno:ya,qty:(+st.resInFerie||0)-(A.oldF||0)}], lotsR=[{anno:ya-1,qty:A.oldR||0},{anno:ya,qty:(+st.resInRol||0)-(A.oldR||0)}];
   for(const r of L.rows){ const y=+r.mese.slice(0,4); let l=lotsF.find(x=>x.anno===y); if(!l) lotsF.push(l={anno:y,qty:0}); l.qty+=r.ferieMat; let k=lotsR.find(x=>x.anno===y); if(!k) lotsR.push(k={anno:y,qty:0}); k.qty+=r.rolMat; }
   const consF = L.days.filter(x=>x.tipo==="ferie").sort((a,b)=>a.d<b.d?-1:1).map(x=>({qty:x.gg}));
   const consR = L.days.filter(x=>x.tipo==="rol").sort((a,b)=>a.d<b.d?-1:1).map(x=>({qty:x.ore}));
@@ -520,13 +586,31 @@ function liveAlerts(L){
     if(gg<0) al.push({k:"bad", t:`Circa ${num(l.rest)} h di ROL del ${l.anno} risultano scadute (fine ${fmtM(scad)}).`});
     else if(gg<=4) al.push({k:"warn", t:`Circa ${num(l.rest)} h di ROL del ${l.anno} scadono a fine ${fmtM(scad)}.`});
   }
-  const godAnno = L.days.filter(x=>x.tipo==="ferie" && x.d.startsWith(Y+"")).reduce((s,x)=>s+x.gg,0);
-  if(+today.slice(5,7)>=9 && godAnno<10) al.push({k:"warn", t:`Nel ${Y} risultano ${num(godAnno)} giorni di ferie registrati: per legge almeno 2 settimane (10 giorni lavorativi) vanno godute entro l'anno.`});
+  let godAnno = L.days.filter(x=>x.tipo==="ferie" && x.d.startsWith(Y+"")).reduce((s,x)=>s+x.gg,0);
+  const cy = S.cedolini.filter(c=>c.mese.startsWith(Y+"")).sort((a,b)=>a.mese<b.mese?1:-1)[0];
+  if(cy && st.modoMaturato==="progressivo"){ const cv=cedConv(cy); if(isNum(cv.F.god)){ const fino=addMonths(cy.mese, st.godutoRif==="precedente"?-1:0); godAnno = cv.F.god + L.days.filter(x=>x.tipo==="ferie" && x.d.startsWith(Y+"") && ym(x.d)>fino).reduce((s,x)=>s+x.gg,0); } }
+  if(+today.slice(5,7)>=9 && godAnno<10) al.push({k:"warn", t:`Nel ${Y} risultano ${num(godAnno)} giorni di ferie godute: per legge almeno 2 settimane (10 giorni lavorativi) vanno godute entro l'anno.`});
   const last = L.rows[L.rows.length-1];
   if(last && last.ferieRes<0) al.push({k:"bad", t:"Il residuo ferie calcolato è negativo."});
   if(last && last.rolRes<0) al.push({k:"bad", t:"Il residuo ROL calcolato è negativo."});
-  if(st.tono && last && last.ferieRes>30) al.push({k:"info", t:Q.troppeFerie+" 🏝️"});
+  if(frase("troppeFerie") && last && last.ferieRes>30) al.push({k:"info", t:frase("troppeFerie")});
+  const cs = congediStats(Y+"");
+  if(cs.visita > +st.visiteOre) al.push({k:"warn", t:`Nel ${Y} hai usato ${num(cs.visita)} h di visite mediche su ${num(st.visiteOre)}: le ore in più potrebbero essere scalate dai ROL o non pagate.`});
+  if(cs.matrimonialeCal > +st.matrimonialeGg) al.push({k:"warn", t:`Congedo matrimoniale: ${cs.matrimonialeCal} giorni registrati su ${st.matrimonialeGg} previsti.`});
   return al;
+}
+function congediStats(Y){
+  const {days}=expand(), r={visita:0, matrimonialeCal:0, per:{}};
+  for(const x of days) if(x.tipo==="permesso" && x.d.startsWith(Y)){ const k=x.sub||"altro"; r.per[k]=r.per[k]||{ore:0,gg:0}; r.per[k].ore+=x.ore; if(x.ore>=OG()-1e-9) r.per[k].gg++; if(k==="visita") r.visita+=x.ore; }
+  for(const a of S.assenze) if(a.tipo==="permesso" && SUB[subOf(a)].cal){ eachDay(a.dal,a.al,d=>{ if(d.startsWith(Y)){ const k=subOf(a); r.per[k]=r.per[k]||{ore:0,gg:0}; r.per[k].cal=(r.per[k].cal||0)+1; if(k==="matrimoniale") r.matrimonialeCal++; } }); }
+  return r;
+}
+function congediCard(){
+  const st=S.settings, Y=todayS().slice(0,4), c=congediStats(Y);
+  const rows=[`<li><div class="main"><div class="t">🩺 Visite mediche</div><div class="d">${num(c.visita)} h usate su ${num(st.visiteOre)} · restano <b>${num(Math.max(0,st.visiteOre-c.visita))} h</b></div></div></li>`];
+  for(const k of Object.keys(SUB)){ if(k==="visita"||!c.per[k]) continue; const p=c.per[k];
+    rows.push(`<li><div class="main"><div class="t">${SUB[k].l}</div><div class="d">${SUB[k].cal?`${p.cal||0} gg di calendario${k==="matrimoniale"?" su "+st.matrimonialeGg:""}`:p.gg?`${p.gg} gg (${num(p.ore)} h)`:`${num(p.ore)} h`}</div></div></li>`); }
+  return `<div class="card"><h2>📝 Permessi e congedi ${Y}</h2><ul class="list">${rows.join("")}</ul></div>`;
 }
 function malattiaStats(days){
   const today=todayS(), Y=today.slice(0,4), st=S.settings;
@@ -559,7 +643,7 @@ function render(){ const V={home:vHome,reg:vReg,buoni:vBuoni,ced:vCed,ano:vAno,s
 function bonusCard(){
   const st=S.settings, p=bonusPeriod(todayS()), b=bonusCalc(p.da,p.a);
   const pct = b.totale ? b.importo/b.totale : 0;
-  const q = !st.tono ? "" : b.importo<=0 ? Q.bonus0+" 🍀" : pct<=.25 ? Q.bonusLow+" 🤞" : b.giorni===0 ? Q.bonusFull+" 💪" : Q.bonusMid+" 🩹";
+  const q = b.importo<=0 ? frase("bonus0") : pct<=.25 ? frase("bonusLow") : b.giorni===0 ? frase("bonusFull") : frase("bonusMid");
   return `<div class="kpi pink wide"><span class="ic">🎁</span><div class="l">Bonus presenze stimato (luglio ${p.pag.slice(0,4)})</div>
     <div class="v">${eur(b.importo)} <small>su ${eur(b.totale)}</small></div>
     <div class="s">${b.giorni} giorn${b.giorni===1?"o":"i"} di malattia × ${eur(st.bonusDetr)} · periodo ${fmtD(p.da)} – ${fmtD(p.a)}</div>
@@ -568,9 +652,10 @@ function bonusCard(){
 function vHome(){
   const st=S.settings;
   if(!st.meseInizio) return `<div class="card"><h2>Benvenuta! 👋</h2>
-    <p>Per iniziare imposta il <b>mese di partenza</b> e i <b>residui</b> di ferie e ROL che hai in quel momento (li trovi nell'ultimo cedolino).</p>
+    <p>Per iniziare carica il <b>PDF del tuo ultimo cedolino</b>: l'app prende da lì i residui di ferie e ROL e da quel momento li aggiorna da sola.</p>
+    <button class="btn full" onclick="go('ced')">📄 Carica il cedolino</button>
     <p class="muted small">Ratei: ferie ${num(st.ferieMeseCal)} ÷ ${num(st.divisore)} = <b>${num(ferieMese(),3)} giorni lavorativi/mese</b>, ROL <b>${num(st.rolMese)} h/mese</b>, buono pasto <b>${eur(st.buonoValore)}</b> con almeno ${num(st.buonoMinOre)} h di presenza.</p>
-    <button class="btn full" onclick="go('set')">Imposta i residui di partenza</button></div>`;
+    <button class="btn sec full" onclick="go('set')">Oppure inserisci i residui a mano</button></div>`;
   const L = ledger(); const last = L.rows[L.rows.length-1];
   const ms = malattiaStats(L.days), al = liveAlerts(L);
   const today=todayS(), now=ym(today), bm = monthStats(now, today), bmt = monthStats(now);
@@ -601,6 +686,7 @@ function vHome(){
   ${aperte?`<div class="alert bad" onclick="go('ano')" style="cursor:pointer"><b>🚨 ${aperte} anomali${aperte===1?'a':'e'} da verificare</b> nei cedolini →</div>`:''}
   ${al.map(a=>`<div class="alert ${a.k}">${esc(a.t)}</div>`).join("")}
   ${cmp}
+  ${congediCard()}
   <div class="card"><h2>📊 Movimenti per mese</h2><div class="scroll"><table>
     <tr><th>Mese</th><th>Ferie +</th><th>Ferie −</th><th>Res.</th><th>ROL +</th><th>ROL −</th><th>Res.</th></tr>
     ${recent.map(r=>`<tr><td>${fmtMs(r.mese)}</td><td>${num(r.ferieMat)}</td><td>${r.ferieGod?num(r.ferieGod):'·'}</td><td><b>${num(r.ferieRes)}</b></td><td>${num(r.rolMat)}</td><td>${r.rolGod?num(r.rolGod):'·'}</td><td><b>${num(r.rolRes)}</b></td></tr>`).join("")}
@@ -608,7 +694,9 @@ function vHome(){
 }
 
 /* ---------- Assenze ---------- */
-const TIPI = {ferie:"🏖️ Ferie", rol:"⏱️ ROL", permesso:"📝 Permesso", malattia:"🤒 Malattia"};
+const TIPI = {ferie:"🏖️ Ferie", rol:"⏱️ ROL", permesso:"📝 Permessi e congedi", malattia:"🤒 Malattia"};
+let regSub = "visita";
+const tagLabel = a => a.tipo==="permesso" ? SUB[subOf(a)].l : TIPI[a.tipo];
 function vReg(){
   const t=regTipo, today=todayS();
   const list=[...S.assenze].sort((a,b)=>a.dal<b.dal?1:-1);
@@ -618,7 +706,8 @@ function vReg(){
     const p=per[a.id]||{gg:0,ore:0};
     const per2 = a.dal===a.al? fmtD(a.dal) : fmtD(a.dal)+" → "+fmtD(a.al);
     if(a.tipo==="ferie") return [per2, num(p.gg)+" gg lavorativi"+(a.mezza?" (mezza giornata)":"")];
-    if(a.tipo==="rol"||a.tipo==="permesso") return [per2, num(p.ore)+" h"+(a.giornate?" (giornate intere)":"")+(a.tipo==="permesso"?" · non scala i ROL":"")];
+    if(a.tipo==="permesso" && SUB[subOf(a)].cal) return [per2, ((parseD(a.al)-parseD(a.dal))/86400000+1)+" gg di calendario · "+num(p.ore)+" h di lavoro"];
+    if(a.tipo==="rol"||a.tipo==="permesso") return [per2, num(p.ore)+" h"+(a.giornate?" (giornate intere)":"")];
     const cal = (parseD(a.al)-parseD(a.dal))/86400000+1;
     return [per2, cal+" gg di calendario"+(a.protocollo?" · prot. "+esc(a.protocollo):"")];
   };
@@ -626,22 +715,24 @@ function vReg(){
   const ore = t==="rol"||t==="permesso";
   return `<div class="card"><h2>Registra un'assenza</h2>
     <div class="seg" id="segTipo">${Object.keys(TIPI).map(x=>`<button data-t="${x}" class="${t===x?'on':''}">${TIPI[x]}</button>`).join("")}</div>
+    ${t==="permesso"?`<label>Tipo</label><select id="aSub">${Object.entries(SUB).map(([k,v])=>`<option value="${k}" ${k===regSub?"selected":""}>${v.l}</option>`).join("")}</select>`:""}
     <div class="row"><div><label>Dal</label><input type="date" id="aDal" value="${today}"></div>
     <div id="wAl"><label>Al</label><input type="date" id="aAl" value="${today}"></div></div>
     ${t==="ferie"?`<label class="chk"><input type="checkbox" id="aMezza"> Mezza giornata</label>`:""}
     ${ore?`<label class="chk"><input type="checkbox" id="aGiorn"> Giornate intere (${num(OG())} h per giorno lavorativo)</label>
       <div id="wOre"><label>Ore</label><input type="text" id="aOre" inputmode="decimal" placeholder="es. 2,5"></div>`:""}
-    ${t==="permesso"?`<p class="muted small">Per permessi che non scalano i ROL (visite mediche, 104, ex festività, uscite non retribuite…). Contano per le ore di presenza e quindi per il buono pasto.</p>`:""}
+    ${t==="permesso"?`<p class="muted small">Non scalano né ferie né ROL. Riducono le ore di presenza (e quindi il buono pasto).</p>`:""}
     ${t==="malattia"?`<label>N. protocollo certificato (facoltativo)</label><input id="aProt" placeholder="es. 123456789">`:""}
     <label>Nota (facoltativa)</label><input id="aNota">
     <button class="btn full" id="aSave">Salva</button>
     <p class="muted small" id="aHint"></p></div>
     <div class="card"><h2>Storico assenze</h2>
-    ${list.length?Object.keys(groups).map(k=>`<h3>${fmtM(k)}</h3><ul class="list">${groups[k].map(a=>{const [d1,d2]=desc(a);return `<li><span class="tag ${a.tipo}">${TIPI[a.tipo]}</span><div class="main"><div class="t">${d1}</div><div class="d">${d2}${a.nota?" · "+esc(a.nota):""}</div></div><button class="btn sm bad" data-del="${a.id}">✕</button></li>`}).join("")}</ul>`).join(""):`<div class="empty"><span class="big">🗓️</span>Nessuna assenza registrata.<br>Aggiungi anche quelle passate per avere controlli completi.</div>`}
+    ${list.length?Object.keys(groups).map(k=>`<h3>${fmtM(k)}</h3><ul class="list">${groups[k].map(a=>{const [d1,d2]=desc(a);return `<li><span class="tag ${a.tipo}">${tagLabel(a)}</span><div class="main"><div class="t">${d1}</div><div class="d">${d2}${a.nota?" · "+esc(a.nota):""}</div></div><button class="btn sm bad" data-del="${a.id}">✕</button></li>`}).join("")}</ul>`).join(""):`<div class="empty"><span class="big">🗓️</span>Nessuna assenza registrata.<br>Aggiungi anche quelle passate per avere controlli completi.</div>`}
     </div>`;
 }
 bind.reg = () => {
   document.querySelectorAll("#segTipo button").forEach(b=>b.onclick=()=>{regTipo=b.dataset.t; render();});
+  if($("#aSub")){ $("#aSub").onchange=e=>{ regSub=e.target.value; render(); }; if($("#aGiorn")){ $("#aGiorn").checked=!SUB[regSub].ore; } }
   const dal=$("#aDal"), al=$("#aAl"), mz=$("#aMezza"), gi=$("#aGiorn"), oreI=$("#aOre");
   const st=S.settings;
   const upd=()=>{
@@ -651,8 +742,10 @@ bind.reg = () => {
     let h="";
     if(regTipo==="ferie" && !(mz&&mz.checked)){ let n=0; eachDay(dal.value, al.value, d=>{ if(isWorkday(d)) n++; }); h=`${n} giorni lavorativi (esclusi sabati, domeniche e festivi).`; }
     if(regTipo==="ferie" && mz && mz.checked) h=`Con mezza giornata lavori ${num(OG()/2)} h: ${OG()/2>=st.buonoMinOre?"buono pasto salvo.":"niente buono pasto quel giorno."}`;
-    if(gi && !gi.checked){ const o=parseFloat(String(oreI.value).replace(",",".")); if(o>0){ const pres=st.permessiBuono?OG():OG()-o; h=`Quel giorno lavori ${num(pres)} h: ${pres>=st.buonoMinOre?"buono pasto salvo 🍝":"niente buono pasto 🥲 (servono almeno "+num(st.buonoMinOre)+" h)"}.`; } }
+    if(gi && !gi.checked){ const o=parseFloat(String(oreI.value).replace(",",".")); if(o>0){ const pres=(st.permessiBuono && (regTipo==="rol"||regSub==="visita"))?OG():OG()-o; h=`Quel giorno lavori ${num(pres)} h: ${pres>=st.buonoMinOre?"buono pasto salvo 🍝":"niente buono pasto 🥲 (servono almeno "+num(st.buonoMinOre)+" h)"}.`; } }
     if(regTipo==="malattia") h="La malattia si conta in giorni di calendario, non scala ferie né ROL, ma pesa sul bonus presenze.";
+    if(regTipo==="permesso" && SUB[regSub].cal && gi && gi.checked){ const n=(parseD(al.value)-parseD(dal.value))/86400000+1; h=`${n} giorni di calendario.`+(regSub==="matrimoniale"?` Previsti ${st.matrimonialeGg}.`:""); }
+    if(regTipo==="permesso" && regSub==="visita"){ const c=congediStats(dal.value.slice(0,4)); h=(h?h+" ":"")+`Visite mediche ${dal.value.slice(0,4)}: già usate ${num(c.visita)} h su ${num(st.visiteOre)}.`; }
     $("#aHint").textContent=h;
   };
   dal.onchange=upd; al.onchange=upd; if(mz) mz.onchange=upd; if(gi) gi.onchange=upd; if(oreI) oreI.oninput=upd; upd();
@@ -662,10 +755,12 @@ bind.reg = () => {
     if(regTipo==="ferie" && mz.checked){ a.mezza=true; a.al=a.dal; }
     if(gi){ if(gi.checked) a.giornate=true; else { a.ore=parseFloat(String(oreI.value).replace(",",".")); a.al=a.dal; if(!(a.ore>0)) return toast("Inserisci le ore","⏱️"); } }
     if(regTipo==="malattia") a.protocollo=$("#aProt").value.trim();
+    if(regTipo==="permesso") a.sub=regSub;
     if(a.al<a.dal) return toast("La data finale è prima di quella iniziale","🙃");
     S.assenze.push(a); recheck(); render();
     if(a.tipo==="malattia") quip("malattia",{d:num(st.bonusDetr)});
-    else if(!a.giornate && a.ore && !st.permessiBuono && OG()-a.ore < st.buonoMinOre) quip("rolNoBuono",{m:num(st.buonoMinOre)});
+    else if(a.tipo==="permesso" && ["matrimoniale","maternita","lutto","sciopero","visita"].includes(a.sub)) quip(a.sub,{r:num(Math.max(0,st.visiteOre-congediStats(a.dal.slice(0,4)).visita))});
+    else if(!a.giornate && a.ore && !(st.permessiBuono && (a.tipo==="rol"||a.sub==="visita")) && OG()-a.ore < st.buonoMinOre) quip("rolNoBuono",{m:num(st.buonoMinOre)});
     else quip(a.tipo);
   };
   document.querySelectorAll("[data-del]").forEach(b=>b.onclick=async()=>{ if(!await ask("Eliminare questa assenza?")) return; S.assenze=S.assenze.filter(x=>x.id!==b.dataset.del); recheck(); render(); });
@@ -674,7 +769,7 @@ bind.reg = () => {
 /* ---------- Buoni ---------- */
 function vBuoni(){
   const st=S.settings;
-  if(!st.meseInizio) return `<div class="card empty"><span class="big">🍝</span>Prima imposta il mese di partenza in Opzioni.</div>`;
+  if(!st.meseInizio) return `<div class="card empty"><span class="big">🍝</span>Prima carica un cedolino (o imposta la partenza in Opzioni).</div>`;
   const B=buoniSummary(), today=todayS(), now=ym(today), bm=monthStats(now,today), bmt=monthStats(now);
   const rows=[...B.rows].reverse().slice(0,12);
   const spesi=[...S.buoniSpesi].sort((a,b)=>a.data<b.data?1:-1).slice(0,30);
@@ -907,7 +1002,7 @@ function vAno(){
     ${a.nota?`<p class="small"><b>Nota:</b> ${esc(a.nota)}</p>`:""}
     <details><summary>Storico (${a.storia.length})</summary><ul class="list small">${a.storia.map(h=>`<li><div class="main">${new Date(h.t).toLocaleDateString("it-IT")} · <b>${h.s}</b> · ${esc(h.n)}</div></li>`).join("")}</ul></details>
     <div class="btns">${a.stato!=="segnalata"?`<button class="btn sm sec" data-as="${a.id}|segnalata">📨 Segnalata</button>`:""}${a.stato!=="risolta"?`<button class="btn sm sec" data-as="${a.id}|risolta">✅ Risolta</button>`:""}${a.stato!=="ignorata"?`<button class="btn sm sec" data-as="${a.id}|ignorata">🙈 Ignora</button>`:""}${a.stato!=="aperta"?`<button class="btn sm sec" data-as="${a.id}|aperta">↩️ Riapri</button>`:""}<button class="btn sm sec" data-an="${a.id}">✏️ Nota</button></div>
-  </div>`).join(""):`<div class="card empty"><span class="big">${anoFilter==="aperta"?(S.settings.tono?Q.noAno[1]:"✅"):"📭"}</span>${anoFilter==="aperta"?(S.settings.tono?Q.noAno[0]:"Nessuna anomalia aperta."):"Nessuna anomalia in questa categoria."}</div>`}
+  </div>`).join(""):`<div class="card empty"><span class="big">${anoFilter==="aperta"?frase("noAno")[1]:"📭"}</span>${anoFilter==="aperta"?frase("noAno")[0]:"Nessuna anomalia in questa categoria."}</div>`}
   <p class="muted small" style="padding:0 4px">Le anomalie vengono ricontrollate ogni volta che modifichi cedolini e assenze. Se i dati vengono corretti, passano a "risolta" da sole, ma restano nello storico.</p>`;
 }
 bind.ano = () => {
@@ -922,11 +1017,15 @@ function vSet(){
   const sel=(id,opts,v)=>`<select id="${id}">${opts.map(([k,l])=>`<option value="${k}" ${k===v?"selected":""}>${l}</option>`).join("")}</select>`;
   const inp=(id,l,v,extra="")=>`<div><label>${l}</label><input inputmode="decimal" id="${id}" value="${esc(v)}" ${extra}></div>`;
   return `<div class="card"><h2>🎭 Personalità</h2>
-    <label class="chk"><input type="checkbox" id="sTono" ${st.tono?"checked":""}> Tono sarcastico nei messaggi</label></div>
+    <div class="seg" id="segPers">${[["seria","🧐 Seria"],["sarcastica","😏 Sarcastica"],["cattiva","😈 Cattiva"]].map(([k,l])=>`<button data-p="${k}" class="${st.personalita===k?'on':''}">${l}</button>`).join("")}</div>
+    <p class="muted small">Decide il tono dei messaggi. La cattiva non ha pietà (tranne che per lutti e nascite).</p></div>
   <div class="card"><h2>🚩 Punto di partenza</h2>
-    <label>Primo mese gestito dall'app</label><input type="month" id="sMI" value="${st.meseInizio}">
-    <div class="row">${inp("sRF","Ferie residue (gg lavorativi)",st.resInFerie)}${inp("sRR","ROL residui (ore)",st.resInRol)}</div>
-    <p class="muted small">Prendi i residui (FERIE RES. e FEST. RES.) dal cedolino del mese <b>precedente</b> a quello di partenza: es. partenza ottobre → cedolino di settembre. Le ferie su base 6 giorni vanno divise per ${num(st.divisore)}. ${st.godutoRif==="precedente"?"Registra in Assenze anche ferie e ROL presi nel mese di quel cedolino: il cedolino li scala solo il mese dopo.":""}</p></div>
+    <label>Da dove partire</label>${sel("sSM",[["auto","Automatico: dal primo cedolino caricato"],["manuale","Manuale"]],st.startMode)}
+    <div id="wAuto" class="${st.startMode==="auto"?"":"hide"}"><p class="small">${st._anchor&&st._anchor.auto?`Partenza dal cedolino di <b>${fmtM(st._anchor.mese)}</b>: FERIE RES. ${num(st._anchor.f)} · FEST. RES. ${num(st._anchor.r)} h (come sul cedolino).`:"Nessun cedolino caricato: caricane uno dalla sezione Cedolini."}</p></div>
+    <div id="wMan" class="${st.startMode==="manuale"?"":"hide"}">
+      <label>Mese del cedolino di partenza</label><input type="month" id="sSMe" value="${st.startMese}">
+      <div class="row">${inp("sSF","FERIE RES. (come sul cedolino)",st.startFerieCed)}${inp("sSR","FEST. RES. / ROL (ore)",st.startRolCed)}</div></div>
+    <p class="muted small">I valori si inseriscono così come sono scritti sul cedolino, senza conversioni. Registra in Assenze ferie e ROL presi dal mese di quel cedolino in poi${st.godutoRif==="precedente"?" (il cedolino li scala solo il mese dopo)":""}.</p></div>
   <div class="card"><h2>📜 Contratto</h2>
     <div class="row">${inp("sFM","Ferie al mese (base 6 gg)",st.ferieMeseCal)}${inp("sDV","Divisore (6/5)",st.divisore)}</div>
     <div class="row">${inp("sRM","ROL al mese (ore)",st.rolMese)}${inp("sOG","Ore per giornata",st.oreGiorno)}</div>
@@ -934,6 +1033,7 @@ function vSet(){
     <div class="row"><div><label>Santo patrono (MM-GG)</label><input id="sSP" placeholder="es. 06-29" value="${esc(st.santoPatrono)}"></div><div><label>Mese assunzione (se nell'anno)</label><input type="month" id="sMA" value="${st.meseAssunzione}"></div></div>
     <div class="row">${inp("sCL","Comporto malattia (gg, 0 = no)",st.comportoLimite)}${inp("sCM","Periodo comporto (mesi)",st.comportoMesi)}</div>
     ${inp("sRS","Scadenza ROL: mesi dopo fine anno (0 = nessuna)",st.rolScadenzaMesi)}
+    <div class="row">${inp("sVO","Visite mediche all'anno (ore)",st.visiteOre)}${inp("sMG","Congedo matrimoniale (giorni)",st.matrimonialeGg)}</div>
     <p class="muted small">CCNL Sanità privata AIOP-ARIS (non medici): l'azienda può recedere oltre 540 giorni di malattia in un quadriennio mobile (48 mesi). La scadenza dei ROL va verificata con l'ufficio personale.</p></div>
   <div class="card"><h2>🍝 Buoni pasto</h2>
     <div class="row">${inp("sBV","Valore buono (€)",st.buonoValore)}${inp("sBM","Presenza minima (ore)",st.buonoMinOre)}</div>
@@ -952,7 +1052,7 @@ function vSet(){
     <label>Maturato e goduto sono</label>${sel("sMM",[["mese","Del singolo mese"],["progressivo","Progressivi dall'inizio dell'anno"]],st.modoMaturato)}
     <div class="row">${inp("sTG","Tolleranza giorni",st.tollGiorni)}${inp("sTO","Tolleranza ore ROL",st.tollOre)}</div>
     ${inp("sTL","Tolleranza ore lavorate",st.tollOreLav)}
-    <label>Password dei PDF (codice fiscale)</label><input id="sPW" value="${esc(st.pdfPassword)}" autocomplete="off" autocapitalize="characters" placeholder="facoltativa: la chiede l'app">
+    <label>Password dei PDF (codice fiscale)</label><input id="sPW" type="password" value="${esc(st.pdfPassword)}" autocomplete="off" autocapitalize="characters" placeholder="facoltativa: la chiede l'app">
     <p class="muted small">Salvata solo su questo telefono. Lasciala vuota se preferisci inserirla ogni volta.</p>
     <button class="btn full" id="sSave">Salva impostazioni</button></div>
   <div class="card"><h2>💾 Backup e dati</h2>
@@ -963,15 +1063,16 @@ function vSet(){
 }
 bind.set = () => {
   const n = id => { const v=parseFloat(String($(id).value).replace(",",".")); return isNaN(v)?0:v; };
-  $("#sTono").onchange = e => { S.settings.tono=e.target.checked; save(); toast(e.target.checked?"Sarcasmo attivato. Ti avevo avvisata.":"Modalità seria. Che noia.", e.target.checked?"😏":"🧐"); };
+  $("#sSM").onchange = e => { $("#wAuto").classList.toggle("hide", e.target.value!=="auto"); $("#wMan").classList.toggle("hide", e.target.value!=="manuale"); };
+  document.querySelectorAll("#segPers button").forEach(b=>b.onclick=()=>{ S.settings.personalita=b.dataset.p; save(); document.querySelectorAll("#segPers button").forEach(x=>x.classList.toggle("on",x===b)); quip("hello"); });
   $("#sSave").onclick = () => {
     const st=S.settings;
-    Object.assign(st,{meseInizio:$("#sMI").value, resInFerie:n("#sRF"), resInRol:n("#sRR"), ferieMeseCal:n("#sFM")||2.5, divisore:n("#sDV")||1.2, rolMese:n("#sRM"), oreGiorno:n("#sOG")||7.2,
-      santoPatrono:$("#sSP").value.trim(), meseAssunzione:$("#sMA").value, comportoLimite:n("#sCL"), comportoMesi:n("#sCM")||36, rolScadenzaMesi:n("#sRS"),
+    Object.assign(st,{startMode:$("#sSM").value, startMese:$("#sSMe").value, startFerieCed:n("#sSF"), startRolCed:n("#sSR"), ferieMeseCal:n("#sFM")||2.5, divisore:n("#sDV")||1.2, rolMese:n("#sRM"), oreGiorno:n("#sOG")||7.2,
+      santoPatrono:$("#sSP").value.trim(), meseAssunzione:$("#sMA").value, comportoLimite:n("#sCL"), comportoMesi:n("#sCM")||36, rolScadenzaMesi:n("#sRS"), visiteOre:n("#sVO"), matrimonialeGg:n("#sMG"),
       buonoValore:n("#sBV"), buonoMinOre:n("#sBM"), buoniSaldoIniz:n("#sBS"), buoniRif:$("#sBR").value, permessiBuono:$("#sPB").checked,
       bonusImporto:n("#sPI"), bonusDetr:n("#sPD"), bonusPeriodo:$("#sPP").value, bonusGiorni:$("#sPG").value,
       unitaFerieCed:$("#sUF").value, unitaRolCed:$("#sUR").value, modoMaturato:$("#sMM").value, godutoRif:$("#sGR").value, tollGiorni:n("#sTG"), tollOre:n("#sTO"), tollOreLav:n("#sTL"),
-      pdfPassword:$("#sPW").value.trim(), tono:$("#sTono").checked});
+      pdfPassword:$("#sPW").value.trim()});
     for(const k in holCache) delete holCache[k];
     recheck(); quip("set"); go("home");
   };
@@ -979,7 +1080,7 @@ bind.set = () => {
   $("#bImp").onclick = () => $("#fileBackup").click();
   $("#bCsv").onclick = exportCsv;
   $("#bCopy").onclick = async () => { try{ await navigator.clipboard.writeText(JSON.stringify(S)); toast("Backup copiato: incollalo in una nota o in una mail a te stessa","📋"); }catch(e){ toast("Copia non consentita su questo dispositivo","🚫"); } };
-  $("#bReset").onclick = async () => { if(!await ask("Cancellare TUTTI i dati? Fai prima un backup.")) return; if(!await ask("Sicura sicura? Non si torna indietro.")) return; S={settings:{...DEF_SETTINGS,cfg3:true,cfg4:true,cfg5:true,cfg6:true,cfg7:true},assenze:[],cedolini:[],anomalie:[],buoniSpesi:[]}; invalidate(); save(); go("home"); };
+  $("#bReset").onclick = async () => { if(!await ask("Cancellare TUTTI i dati? Fai prima un backup.")) return; if(!await ask("Sicura sicura? Non si torna indietro.")) return; S={settings:{...DEF_SETTINGS,cfg3:true,cfg4:true,cfg5:true,cfg6:true,cfg7:true,cfg8:true,cfg9:true},assenze:[],cedolini:[],anomalie:[],buoniSpesi:[]}; invalidate(); save(); go("home"); };
 };
 $("#fileBackup").onchange = async e => {
   const f=e.target.files[0]; if(!f) return;
@@ -998,8 +1099,8 @@ function exportCsv(){
   const L = ledger(), B = buoniSummary(), out=[];
   out.push("RIEPILOGO MENSILE (calcolo app)"); out.push(["Mese","Ferie inizio","Ferie maturate","Ferie godute","Ferie residuo","ROL inizio","ROL maturati","ROL usati","ROL residuo","Giorni malattia","Ore presenza","Buoni pasto"].map(q).join(";"));
   if(L) for(const r of L.rows){ const ms=monthStats(r.mese); out.push([r.mese,nn(r.ferieIn),nn(r.ferieMat),nn(r.ferieGod),nn(r.ferieRes),nn(r.rolIn),nn(r.rolMat),nn(r.rolGod),nn(r.rolRes),r.mal,nn(ms.ore),ms.buoni].map(q).join(";")); }
-  out.push(""); out.push("ASSENZE"); out.push(["Tipo","Dal","Al","Ore","Mezza giornata","Giornate intere","Protocollo","Nota"].map(q).join(";"));
-  for(const a of [...S.assenze].sort((a,b)=>a.dal<b.dal?-1:1)) out.push([a.tipo,a.dal,a.al,nn(a.ore),a.mezza?"sì":"",a.giornate?"sì":"",a.protocollo,a.nota].map(q).join(";"));
+  out.push(""); out.push("ASSENZE"); out.push(["Tipo","Dettaglio","Dal","Al","Ore","Mezza giornata","Giornate intere","Protocollo","Nota"].map(q).join(";"));
+  for(const a of [...S.assenze].sort((a,b)=>a.dal<b.dal?-1:1)) out.push([a.tipo,a.tipo==="permesso"?SUB[subOf(a)].l.slice(2).trim():"",a.dal,a.al,nn(a.ore),a.mezza?"sì":"",a.giornate?"sì":"",a.protocollo,a.nota].map(q).join(";"));
   out.push(""); out.push("CEDOLINI (valori come riportati)"); out.push(["Mese","Ferie res.iniz.","Ferie mat.","Ferie god.","Ferie res.","ROL res.iniz.","ROL mat.","ROL god.","ROL res.","Ore lavorate","N. buoni","Buoni €","Bonus presenze €","File"].map(q).join(";"));
   for(const c of [...S.cedolini].sort((a,b)=>a.mese<b.mese?-1:1)){ const x=c.extra||{}; out.push([c.mese,nn(c.ferie.resAP),nn(c.ferie.mat),nn(c.ferie.god),nn(c.ferie.res),nn(c.rol.resAP),nn(c.rol.mat),nn(c.rol.god),nn(c.rol.res),nn(x.oreLav),nn(x.buoniN),nn(x.buoniEuro),nn(x.bonus),c.fonte].map(q).join(";")); }
   out.push(""); out.push("BUONI USATI"); out.push(["Data","Quantità","Nota"].map(q).join(";"));
